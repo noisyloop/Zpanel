@@ -29,6 +29,9 @@
         <ul>
           <li><button class="nav-btn active" data-panel="stats">System Stats</button></li>
           <li><button class="nav-btn" data-panel="files">File Manager</button></li>
+          <li><button class="nav-btn" data-panel="domains">Domains</button></li>
+          <li><button class="nav-btn" data-panel="dns">DNS Manager</button></li>
+          <li><button class="nav-btn" data-panel="ssl">SSL Certs</button></li>
         </ul>
         <div class="sidebar-footer">
           <span id="nav-username"></span>
@@ -88,6 +91,103 @@
             <tbody id="fm-tbody"></tbody>
           </table>
           <p id="fm-error" class="error"></p>
+        </section>
+
+        <!-- Domains panel -->
+        <section id="panel-domains" class="panel hidden">
+          <h2>Domains</h2>
+          <div class="panel-toolbar">
+            <button id="domain-add-btn" class="btn-primary">+ Add Domain</button>
+          </div>
+          <table class="data-table">
+            <thead>
+              <tr><th>Domain</th><th>Type</th><th>Document Root</th><th>Created</th><th>Actions</th></tr>
+            </thead>
+            <tbody id="domains-tbody"></tbody>
+          </table>
+          <p id="domains-error" class="error"></p>
+
+          <!-- Add domain form (inline) -->
+          <div id="domain-form" class="inline-form hidden">
+            <h3>Add Domain</h3>
+            <input id="domain-input" type="text" placeholder="example.com" />
+            <input id="domain-docroot" type="text" placeholder="Doc root (optional)" />
+            <div class="form-row">
+              <button id="domain-submit-btn" class="btn-primary">Create</button>
+              <button id="domain-cancel-btn" class="btn-ghost">Cancel</button>
+            </div>
+            <p id="domain-form-error" class="error"></p>
+          </div>
+
+          <!-- Subdomain form (inline) -->
+          <div id="subdomain-form" class="inline-form hidden">
+            <h3>Add Subdomain to <span id="sub-parent-label"></span></h3>
+            <input id="sub-input" type="text" placeholder="sub (e.g. blog)" />
+            <label class="checkbox-label">
+              <input id="sub-wildcard" type="checkbox" /> Wildcard (*.domain)
+            </label>
+            <div class="form-row">
+              <button id="sub-submit-btn" class="btn-primary">Create</button>
+              <button id="sub-cancel-btn" class="btn-ghost">Cancel</button>
+            </div>
+            <p id="sub-form-error" class="error"></p>
+          </div>
+        </section>
+
+        <!-- DNS Manager panel -->
+        <section id="panel-dns" class="panel hidden">
+          <h2>DNS Manager</h2>
+          <div class="panel-toolbar">
+            <select id="dns-domain-select"><option value="">Select domain…</option></select>
+            <button id="dns-add-btn" class="btn-primary">+ Add Record</button>
+          </div>
+          <table class="data-table">
+            <thead>
+              <tr><th>Type</th><th>Name</th><th>Value</th><th>TTL</th><th>Priority</th><th>Actions</th></tr>
+            </thead>
+            <tbody id="dns-tbody"></tbody>
+          </table>
+          <details id="dns-zone-block" style="margin-top:20px">
+            <summary style="cursor:pointer;color:var(--muted)">Raw Zone File</summary>
+            <pre id="dns-zone-raw" class="zone-pre"></pre>
+          </details>
+          <p id="dns-error" class="error"></p>
+
+          <!-- Add record form -->
+          <div id="dns-form" class="inline-form hidden">
+            <h3>Add DNS Record</h3>
+            <select id="dns-type-select">
+              <option>A</option><option>AAAA</option><option>CNAME</option>
+              <option>MX</option><option>TXT</option><option>NS</option>
+            </select>
+            <input id="dns-name-input"  type="text" placeholder="Name (@ for root)" />
+            <input id="dns-value-input" type="text" placeholder="Value" />
+            <input id="dns-ttl-input"   type="number" placeholder="TTL (3600)" value="3600" />
+            <input id="dns-prio-input"  type="number" placeholder="Priority (MX only)" />
+            <div class="form-row">
+              <button id="dns-submit-btn" class="btn-primary">Add Record</button>
+              <button id="dns-cancel-btn" class="btn-ghost">Cancel</button>
+            </div>
+            <p id="dns-form-error" class="error"></p>
+          </div>
+        </section>
+
+        <!-- SSL Certs panel -->
+        <section id="panel-ssl" class="panel hidden">
+          <h2>SSL Certificates</h2>
+          <div class="panel-toolbar">
+            <select id="ssl-domain-select"><option value="">Select domain…</option></select>
+            <button id="ssl-issue-btn" class="btn-primary">Issue Certificate</button>
+            <button id="ssl-renew-btn" class="btn-ghost">Manual Renew</button>
+          </div>
+          <table class="data-table">
+            <thead>
+              <tr><th>Domain</th><th>Status</th><th>Issued</th><th>Expires</th><th>Days Left</th><th>Actions</th></tr>
+            </thead>
+            <tbody id="ssl-tbody"></tbody>
+          </table>
+          <p id="ssl-message" class="info-msg"></p>
+          <p id="ssl-error" class="error"></p>
         </section>
       </main>
     </div>

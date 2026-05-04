@@ -267,3 +267,130 @@ canvas { display: block; }
 .fm-action:hover { background: var(--surface2); color: var(--text); }
 
 .fm-action.del:hover { color: var(--danger); }
+
+/* ── Shared panel components ───────────────────────────────────────────────── */
+.panel-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 18px;
+  flex-wrap: wrap;
+}
+
+.btn-primary {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius);
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.btn-primary:hover { filter: brightness(1.15); }
+
+.btn-ghost {
+  background: none;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 7px 14px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.btn-ghost:hover { border-color: var(--text); color: var(--text); }
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.data-table th, .data-table td {
+  text-align: left;
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--border);
+}
+.data-table th { color: var(--muted); font-weight: 600; }
+.data-table tr:hover td { background: var(--surface2); }
+
+.action-btn {
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  margin-right: 2px;
+}
+.action-btn:hover { background: var(--surface2); color: var(--text); }
+.action-btn.danger:hover { color: var(--danger); }
+
+/* ── Inline forms ──────────────────────────────────────────────────────────── */
+.inline-form {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 24px;
+  margin-top: 20px;
+  max-width: 500px;
+}
+.inline-form h3 { margin-bottom: 16px; font-size: 15px; }
+.inline-form input, .inline-form select {
+  display: block;
+  width: 100%;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  padding: 9px 12px;
+  margin-bottom: 12px;
+  font-size: 13px;
+  outline: none;
+}
+.inline-form input:focus, .inline-form select:focus { border-color: var(--accent); }
+.form-row { display: flex; gap: 10px; margin-top: 4px; }
+
+.checkbox-label { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; font-size: 13px; }
+.checkbox-label input { width: auto; margin: 0; }
+
+/* ── Status badges ─────────────────────────────────────────────────────────── */
+.badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+.badge-active  { background: #1a3d2b; color: #4caf82; }
+.badge-pending { background: #2a2d1a; color: #c9b44f; }
+.badge-expired { background: #3d1a1a; color: #e05252; }
+.badge-failed  { background: #3d1a1a; color: #e05252; }
+
+/* ── Domain select ─────────────────────────────────────────────────────────── */
+.panel-toolbar select {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  padding: 8px 12px;
+  font-size: 13px;
+  outline: none;
+}
+.panel-toolbar select:focus { border-color: var(--accent); }
+
+/* ── Zone file pre ─────────────────────────────────────────────────────────── */
+.zone-pre {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  font-family: monospace;
+  font-size: 12px;
+  overflow-x: auto;
+  margin-top: 10px;
+  white-space: pre;
+}
+
+.info-msg { color: #4caf82; font-size: 13px; margin-top: 8px; min-height: 18px; }

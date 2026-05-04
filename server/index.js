@@ -19,9 +19,13 @@ app.use(express.static(path.join(__dirname, '../client')));
 
 // ── API routes ────────────────────────────────────────────────────────────────
 
-app.use('/api/auth',  require('./auth/routes'));
-app.use('/api/stats', require('./modules/stats/routes'));
-app.use('/api/files', require('./modules/files/routes'));
+app.use('/api/auth',   require('./auth/routes'));
+app.use('/api/stats',  require('./modules/stats/routes'));
+app.use('/api/files',  require('./modules/files/routes'));
+app.use('/api/domains', require('./modules/domains/routes'));
+app.use('/api/domains/:domainId/dns', require('./modules/dns/routes'));
+app.use('/api/domains/:domainId/ssl', require('./modules/ssl/routes'));
+app.use('/api/ssl', require('./modules/ssl/routes'));
 
 // SPA fallback — serve index.html for all non-API routes
 app.get('*', (req, res) => {
@@ -74,6 +78,10 @@ wss.on('connection', (ws, req) => {
     }
   }
 })();
+
+// ── SSL renewal scheduler ─────────────────────────────────────────────────────
+
+require('./modules/ssl').startRenewalScheduler(30);
 
 // ── Start ─────────────────────────────────────────────────────────────────────
 
