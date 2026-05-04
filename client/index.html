@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Zpanel</title>
+  <link rel="stylesheet" href="/src/style.css" />
+</head>
+<body>
+  <div id="app">
+    <!-- Login screen -->
+    <div id="login-screen" class="screen">
+      <div class="login-box">
+        <h1>Zpanel</h1>
+        <form id="login-form">
+          <input id="login-username" type="text" placeholder="Username" autocomplete="username" required />
+          <input id="login-password" type="password" placeholder="Password" autocomplete="current-password" required />
+          <button type="submit">Sign In</button>
+          <p id="login-error" class="error"></p>
+        </form>
+      </div>
+    </div>
+
+    <!-- Main dashboard -->
+    <div id="dashboard" class="screen hidden">
+      <!-- Sidebar -->
+      <nav id="sidebar">
+        <div class="logo">Zpanel</div>
+        <ul>
+          <li><button class="nav-btn active" data-panel="stats">System Stats</button></li>
+          <li><button class="nav-btn" data-panel="files">File Manager</button></li>
+        </ul>
+        <div class="sidebar-footer">
+          <span id="nav-username"></span>
+          <button id="logout-btn">Logout</button>
+        </div>
+      </nav>
+
+      <!-- Panels -->
+      <main id="main">
+        <!-- Stats panel -->
+        <section id="panel-stats" class="panel">
+          <h2>System Stats</h2>
+          <div class="stats-grid">
+            <div class="stat-card" id="stat-cpu">
+              <h3>CPU</h3>
+              <div class="stat-value" id="cpu-val">—</div>
+              <div class="bar-wrap"><div class="bar" id="cpu-bar"></div></div>
+              <canvas id="cpu-chart" width="220" height="60"></canvas>
+            </div>
+            <div class="stat-card" id="stat-ram">
+              <h3>RAM</h3>
+              <div class="stat-value" id="ram-val">—</div>
+              <div class="bar-wrap"><div class="bar" id="ram-bar"></div></div>
+              <canvas id="ram-chart" width="220" height="60"></canvas>
+            </div>
+            <div class="stat-card">
+              <h3>Disk</h3>
+              <div class="stat-value" id="disk-val">—</div>
+              <div class="bar-wrap"><div class="bar" id="disk-bar"></div></div>
+            </div>
+            <div class="stat-card">
+              <h3>Uptime</h3>
+              <div class="stat-value" id="uptime-val">—</div>
+            </div>
+          </div>
+          <p id="ws-status" class="ws-status"></p>
+        </section>
+
+        <!-- File manager panel -->
+        <section id="panel-files" class="panel hidden">
+          <h2>File Manager</h2>
+          <div class="fm-toolbar">
+            <span id="fm-path">/</span>
+            <button id="fm-up-btn">Up</button>
+            <button id="fm-mkdir-btn">New Folder</button>
+            <label class="upload-label">
+              Upload
+              <input id="fm-upload-input" type="file" hidden multiple />
+            </label>
+          </div>
+          <table id="fm-table">
+            <thead>
+              <tr>
+                <th>Name</th><th>Type</th><th>Size</th><th>Mode</th><th>Modified</th><th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="fm-tbody"></tbody>
+          </table>
+          <p id="fm-error" class="error"></p>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <script src="/src/app.js"></script>
+</body>
+</html>
