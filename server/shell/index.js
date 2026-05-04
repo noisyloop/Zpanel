@@ -12,7 +12,15 @@ const COMMAND_WHITELIST = {
   hostname:   { bin: 'hostname',   argPatterns: [] },
   uname:      { bin: 'uname',      argPatterns: [/^-[a-z]$/] },
   id:         { bin: 'id',         argPatterns: [] },
-  // Phase 2+ additions go here
+
+  // Phase 2 — Nginx / DNS / SSL
+  nginx:       { bin: 'nginx',      argPatterns: ['-t', '-s', 'reload', 'stop', 'quit'] },
+  systemctl:   { bin: 'systemctl',  argPatterns: ['reload', 'restart', 'status', 'nginx', 'bind9', 'named'] },
+  certbot:     { bin: 'certbot',    argPatterns: ['--nginx', 'renew', '--non-interactive', '--agree-tos',
+                                                   /^-d$/, /^[a-zA-Z0-9*._-]+\.[a-zA-Z]{2,}$/,
+                                                   /^--email=[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$/,
+                                                   '--expand', '--redirect', '--dry-run'] },
+  'named-checkzone': { bin: 'named-checkzone', argPatterns: [/^[a-zA-Z0-9._-]+\.$/, /^\/[a-zA-Z0-9/_.-]+$/] },
 };
 
 const LOG_DIR = path.join(__dirname, '../logs');

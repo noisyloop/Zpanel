@@ -37,6 +37,42 @@ db.exec(`
     result      TEXT,
     ts          TEXT    NOT NULL DEFAULT (datetime('now'))
   );
+
+  -- Phase 2: domains / vhosts
+  CREATE TABLE IF NOT EXISTS domains (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    domain        TEXT    NOT NULL UNIQUE,
+    doc_root      TEXT    NOT NULL,
+    is_subdomain  INTEGER NOT NULL DEFAULT 0,
+    parent_domain TEXT,
+    php_version   TEXT,
+    created_at    TEXT    NOT NULL DEFAULT (datetime('now'))
+  );
+
+  -- Phase 2: DNS records
+  CREATE TABLE IF NOT EXISTS dns_records (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    domain_id  INTEGER NOT NULL REFERENCES domains(id) ON DELETE CASCADE,
+    type       TEXT    NOT NULL CHECK(type IN ('A','AAAA','CNAME','MX','TXT','NS','SRV')),
+    name       TEXT    NOT NULL,
+    value      TEXT    NOT NULL,
+    ttl        INTEGER NOT NULL DEFAULT 3600,
+    priority   INTEGER,
+    created_at TEXT    NOT NULL DEFAULT (datetime('now'))
+  );
+
+  -- Phase 2: SSL certificates
+  CREATE TABLE IF NOT EXISTS ssl_certs (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    domain_id   INTEGER NOT NULL REFERENCES domains(id) ON DELETE CASCADE,
+    domain      TEXT    NOT NULL,
+    issued_at   TEXT,
+    expires_at  TEXT,
+    auto_renew  INTEGER NOT NULL DEFAULT 1,
+    last_check  TEXT,
+    status      TEXT    NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','active','expired','failed'))
+  );
 `);
 
 module.exports = db;
