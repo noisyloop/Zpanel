@@ -503,3 +503,15 @@ canvas { display: block; }
 .dot-stopped { background: var(--muted); }
 .dot-errored { background: var(--danger); }
 .dot-unknown { background: #c9b44f; }
+
+/* ── Phase 5: Profile panel ─────────────────────────────────────────────────── */
+@media (max-width: 800px) {
+  #panel-profile > div { grid-template-columns: 1fr !important; }
+}
+
+/* ── Phase 5: Audit log pagination ─────────────────────────────────────────── */
+#audit-prev-btn:disabled,
+#audit-next-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+/* ── Phase 5: Profile button in sidebar footer ──────────────────────────────── */
+#nav-profile-btn { width: 100%; text-align: center; }

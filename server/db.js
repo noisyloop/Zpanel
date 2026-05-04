@@ -175,6 +175,17 @@ db.exec(`
     quota_mb    INTEGER NOT NULL DEFAULT 2048,
     created_at  TEXT    NOT NULL DEFAULT (datetime('now'))
   );
+
+  -- Phase 5: API keys for programmatic access
+  CREATE TABLE IF NOT EXISTS api_keys (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name        TEXT    NOT NULL,
+    key_hash    TEXT    NOT NULL UNIQUE,
+    prefix      TEXT    NOT NULL,
+    last_used   TEXT,
+    created_at  TEXT    NOT NULL DEFAULT (datetime('now'))
+  );
 `);
 
 module.exports = db;

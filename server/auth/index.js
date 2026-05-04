@@ -75,8 +75,20 @@ function requireAuth(req, res, next) {
   if (!header || !header.startsWith('Bearer ')) {
     return res.status(401).json({ error: 'Missing token' });
   }
+  const token = header.slice(7);
+
+  // API key path: tokens starting with "zpk_" are long-lived machine tokens
+  if (token.startsWith('zpk_')) {
+    const apiKeys = require('./apiKeys');
+    const user    = apiKeys.verifyApiKey(token);
+    if (!user) return res.status(401).json({ error: 'Invalid API key' });
+    req.user = { sub: user.id, username: user.username, role: user.role, via: 'api_key' };
+    return next();
+  }
+
+  // JWT path
   try {
-    req.user = verifyAccessToken(header.slice(7));
+    req.user = verifyAccessToken(token);
     next();
   } catch {
     return res.status(401).json({ error: 'Invalid or expired token' });

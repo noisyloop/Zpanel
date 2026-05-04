@@ -41,9 +41,13 @@
           <li><button class="nav-btn" data-panel="apps">App Installer</button></li>
           <li><button class="nav-btn" data-panel="processes">Processes</button></li>
           <li><button class="nav-btn" data-panel="deploy">Git Deploy</button></li>
+          <li class="nav-separator admin-only hidden"></li>
+          <li class="admin-only hidden"><button class="nav-btn" data-panel="users">Users</button></li>
+          <li class="admin-only hidden"><button class="nav-btn" data-panel="audit">Audit Log</button></li>
         </ul>
         <div class="sidebar-footer">
           <span id="nav-username"></span>
+          <button id="nav-profile-btn" class="btn-ghost" style="font-size:12px">Profile</button>
           <button id="logout-btn">Logout</button>
         </div>
       </nav>
@@ -478,6 +482,113 @@
             </table>
           </div>
           <p id="deploy-error" class="error"></p>
+        </section>
+
+        <!-- Profile panel -->
+        <section id="panel-profile" class="panel hidden">
+          <h2>Profile</h2>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;max-width:900px">
+
+            <!-- Change password -->
+            <div class="inline-form" style="margin-top:0">
+              <h3>Change Password</h3>
+              <input id="profile-pw-current" type="password" placeholder="Current password" />
+              <input id="profile-pw-new"     type="password" placeholder="New password (min 8 chars)" />
+              <input id="profile-pw-confirm" type="password" placeholder="Confirm new password" />
+              <div class="form-row">
+                <button id="profile-pw-btn" class="btn-primary">Update Password</button>
+              </div>
+              <p id="profile-pw-msg" class="info-msg"></p>
+              <p id="profile-pw-error" class="error"></p>
+            </div>
+
+            <!-- API keys -->
+            <div class="inline-form" style="margin-top:0">
+              <h3>API Keys</h3>
+              <p style="color:var(--muted);font-size:12px;margin-bottom:12px">
+                Use API keys to authenticate requests from scripts or CI pipelines.<br>
+                Keys are shown only once at creation — store them securely.
+              </p>
+              <table class="data-table" id="apikeys-table" style="margin-bottom:14px">
+                <thead><tr><th>Name</th><th>Prefix</th><th>Last used</th><th></th></tr></thead>
+                <tbody id="apikeys-tbody"></tbody>
+              </table>
+              <input id="apikey-name-input" type="text" placeholder="Key name (e.g. deploy-ci)" />
+              <button id="apikey-generate-btn" class="btn-primary">Generate Key</button>
+              <p id="apikeys-error" class="error"></p>
+              <!-- Plaintext shown once after generation -->
+              <div id="apikey-reveal" class="hidden" style="margin-top:12px">
+                <p style="color:#4caf82;font-size:12px;margin-bottom:6px">
+                  Copy this key now — it will not be shown again.
+                </p>
+                <div style="display:flex;gap:8px;align-items:center">
+                  <code id="apikey-plaintext" style="background:var(--surface2);padding:8px 12px;border-radius:var(--radius);font-size:12px;flex:1;word-break:break-all"></code>
+                  <button id="apikey-copy-btn" class="btn-ghost" style="white-space:nowrap">Copy</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Users panel (admin only) -->
+        <section id="panel-users" class="panel hidden">
+          <h2>Users</h2>
+          <div class="panel-toolbar">
+            <button id="user-add-btn" class="btn-primary">+ New User</button>
+          </div>
+          <table class="data-table">
+            <thead><tr><th>Username</th><th>Role</th><th>Domains</th><th>DBs</th><th>Mailboxes</th><th>Created</th><th>Last Login</th><th></th></tr></thead>
+            <tbody id="users-tbody"></tbody>
+          </table>
+          <p id="users-error" class="error"></p>
+
+          <div id="user-form" class="inline-form hidden">
+            <h3>Create User</h3>
+            <input id="user-username-input" type="text"     placeholder="Username (3–32 chars)" />
+            <input id="user-password-input" type="password" placeholder="Password (min 8 chars)" />
+            <select id="user-role-select">
+              <option value="user">User</option>
+              <option value="admin">Admin</option>
+            </select>
+            <div class="form-row">
+              <button id="user-submit-btn"  class="btn-primary">Create</button>
+              <button id="user-cancel-btn"  class="btn-ghost">Cancel</button>
+            </div>
+            <p id="user-form-error" class="error"></p>
+          </div>
+
+          <!-- Reset password inline form -->
+          <div id="user-reset-form" class="inline-form hidden">
+            <h3>Reset Password for <span id="user-reset-name"></span></h3>
+            <input id="user-reset-pw" type="password" placeholder="New password (min 8 chars)" />
+            <div class="form-row">
+              <button id="user-reset-submit-btn" class="btn-primary">Set Password</button>
+              <button id="user-reset-cancel-btn" class="btn-ghost">Cancel</button>
+            </div>
+            <p id="user-reset-error" class="error"></p>
+          </div>
+        </section>
+
+        <!-- Audit Log panel (admin only) -->
+        <section id="panel-audit" class="panel hidden">
+          <h2>Audit Log</h2>
+          <div class="panel-toolbar">
+            <input  id="audit-filter-user"   type="text" placeholder="Filter by username" style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);padding:7px 12px;font-size:13px;width:160px" />
+            <select id="audit-filter-action" style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);padding:7px 12px;font-size:13px">
+              <option value="">All actions</option>
+            </select>
+            <button id="audit-search-btn" class="btn-primary">Search</button>
+          </div>
+          <table class="data-table">
+            <thead><tr><th>Time</th><th>User</th><th>Action</th><th>Target</th><th>IP</th><th>Result</th></tr></thead>
+            <tbody id="audit-tbody"></tbody>
+          </table>
+          <div style="display:flex;gap:10px;margin-top:14px;align-items:center">
+            <button id="audit-prev-btn" class="btn-ghost">← Prev</button>
+            <span id="audit-page-info" style="color:var(--muted);font-size:13px"></span>
+            <button id="audit-next-btn" class="btn-ghost">Next →</button>
+          </div>
+          <p id="audit-error" class="error"></p>
         </section>
       </main>
     </div>
