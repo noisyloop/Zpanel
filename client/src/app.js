@@ -2,10 +2,11 @@
 
 // ── State ─────────────────────────────────────────────────────────────────────
 
-let accessToken = localStorage.getItem('zpanel_token') || null;
-let wsConn      = null;
-let cpuHistory  = new Array(30).fill(0);
-let ramHistory  = new Array(30).fill(0);
+let accessToken  = localStorage.getItem('zpanel_token') || null;
+let currentUser  = null;   // { id, username, role }
+let wsConn       = null;
+let cpuHistory   = new Array(30).fill(0);
+let ramHistory   = new Array(30).fill(0);
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -84,6 +85,7 @@ qs('#login-form').addEventListener('submit', async e => {
     }
     accessToken = data.accessToken;
     localStorage.setItem('zpanel_token', accessToken);
+    currentUser = data.user;
     qs('#nav-username').textContent = data.user.username;
     enterDashboard();
   } catch {
@@ -98,8 +100,16 @@ qs('#logout-btn').addEventListener('click', logout);
 function enterDashboard() {
   hide(qs('#login-screen'));
   show(qs('#dashboard'));
+  applyRoleUI();
   switchPanel('stats');
   connectWs();
+}
+
+function applyRoleUI() {
+  const isAdmin = currentUser?.role === 'admin';
+  document.querySelectorAll('.admin-only').forEach(el => {
+    el.classList.toggle('hidden', !isAdmin);
+  });
 }
 
 // ── Panel switching ───────────────────────────────────────────────────────────
@@ -123,6 +133,12 @@ function switchPanel(name) {
   if (name === 'databases') loadDatabasesPanel();
   if (name === 'ftp')       loadFtpPanel();
   if (name === 'cron')      loadCronPanel();
+  if (name === 'apps')      loadAppsPanel();
+  if (name === 'processes') loadProcessesPanel();
+  if (name === 'deploy')    loadDeployPanel();
+  if (name === 'profile')   loadProfilePanel();
+  if (name === 'users')     loadUsersPanel();
+  if (name === 'audit')     loadAuditPanel();
 }
 
 // ── WebSocket stats ───────────────────────────────────────────────────────────
@@ -1336,6 +1352,257 @@ qs('#deploy-history-close-btn').addEventListener('click', () => {
   activeHookId = null;
 });
 
+// ── Profile panel ─────────────────────────────────────────────────────────────
+
+qs('#nav-profile-btn').addEventListener('click', () => {
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  switchPanel('profile');
+});
+
+async function loadProfilePanel() {
+  qs('#profile-pw-error').textContent = '';
+  qs('#profile-pw-msg').textContent   = '';
+  loadApiKeys();
+}
+
+qs('#profile-pw-btn').addEventListener('click', async () => {
+  const curr    = qs('#profile-pw-current').value;
+  const next    = qs('#profile-pw-new').value;
+  const confirm = qs('#profile-pw-confirm').value;
+  qs('#profile-pw-error').textContent = '';
+  qs('#profile-pw-msg').textContent   = '';
+
+  if (!curr || !next || !confirm) { qs('#profile-pw-error').textContent = 'All fields required'; return; }
+  if (next !== confirm)           { qs('#profile-pw-error').textContent = 'Passwords do not match'; return; }
+  if (next.length < 8)            { qs('#profile-pw-error').textContent = 'Password must be at least 8 characters'; return; }
+
+  // Verify current password by attempting a login with it
+  const verRes = await fetch('/api/auth/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username: currentUser.username, password: curr }),
+  });
+  if (!verRes.ok) { qs('#profile-pw-error').textContent = 'Current password is incorrect'; return; }
+
+  const res  = await api('PATCH', `/api/users/${currentUser.id}/password`, { password: next });
+  const data = await res.json();
+  if (!res.ok) { qs('#profile-pw-error').textContent = data.error; return; }
+
+  qs('#profile-pw-current').value = '';
+  qs('#profile-pw-new').value     = '';
+  qs('#profile-pw-confirm').value = '';
+  qs('#profile-pw-msg').textContent = 'Password updated.';
+});
+
+async function loadApiKeys() {
+  const res  = await api('GET', '/api/auth/keys');
+  const data = await res.json();
+  if (!res.ok) { qs('#apikeys-error').textContent = data.error; return; }
+
+  const tbody = qs('#apikeys-tbody');
+  tbody.innerHTML = '';
+  if (!data.length) {
+    tbody.innerHTML = '<tr><td colspan="4" style="color:var(--muted)">No API keys yet.</td></tr>';
+    return;
+  }
+  data.forEach(k => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${k.name}</td>
+      <td style="font-family:monospace">${k.prefix}…</td>
+      <td>${k.last_used?.slice(0, 16) || 'Never'}</td>
+      <td><button class="action-btn danger" onclick="revokeApiKey(${k.id})">Revoke</button></td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+qs('#apikey-generate-btn').addEventListener('click', async () => {
+  const name = qs('#apikey-name-input').value.trim();
+  qs('#apikeys-error').textContent = '';
+  if (!name) { qs('#apikeys-error').textContent = 'Key name required'; return; }
+
+  const res  = await api('POST', '/api/auth/keys', { name });
+  const data = await res.json();
+  if (!res.ok) { qs('#apikeys-error').textContent = data.error; return; }
+
+  qs('#apikey-name-input').value = '';
+  qs('#apikey-plaintext').textContent = data.plaintext;
+  show(qs('#apikey-reveal'));
+  loadApiKeys();
+});
+
+qs('#apikey-copy-btn').addEventListener('click', () => {
+  const text = qs('#apikey-plaintext').textContent;
+  navigator.clipboard.writeText(text).then(() => {
+    qs('#apikey-copy-btn').textContent = 'Copied!';
+    setTimeout(() => { qs('#apikey-copy-btn').textContent = 'Copy'; }, 2000);
+  });
+});
+
+async function revokeApiKey(id) {
+  if (!confirm('Revoke this API key?')) return;
+  const res = await api('DELETE', `/api/auth/keys/${id}`);
+  if (res.ok) { hide(qs('#apikey-reveal')); loadApiKeys(); }
+  else { const d = await res.json(); qs('#apikeys-error').textContent = d.error; }
+}
+
+// ── Users panel (admin) ────────────────────────────────────────────────────────
+
+let resetTargetId = null;
+
+async function loadUsersPanel() {
+  qs('#users-error').textContent = '';
+  hide(qs('#user-form'));
+  hide(qs('#user-reset-form'));
+
+  const res  = await api('GET', '/api/users');
+  const data = await res.json();
+  if (!res.ok) { qs('#users-error').textContent = data.error; return; }
+
+  const tbody = qs('#users-tbody');
+  tbody.innerHTML = '';
+  data.forEach(u => {
+    const isSelf = u.id === currentUser?.id;
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${u.username}${isSelf ? ' <span style="color:var(--muted);font-size:11px">(you)</span>' : ''}</td>
+      <td><span class="badge ${u.role === 'admin' ? 'badge-active' : 'badge-pending'}">${u.role}</span></td>
+      <td>${u.domains}</td>
+      <td>${u.databases}</td>
+      <td>${u.mailboxes}</td>
+      <td>${u.created_at?.slice(0, 10) || '—'}</td>
+      <td>${u.last_login?.slice(0, 16) || 'Never'}</td>
+      <td>
+        <button class="action-btn" onclick="openUserReset(${u.id},'${u.username}')">Reset PW</button>
+        ${!isSelf ? `<button class="action-btn danger" onclick="deleteUser(${u.id})">Delete</button>` : ''}
+      </td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+qs('#user-add-btn').addEventListener('click', () => {
+  show(qs('#user-form'));
+  qs('#user-username-input').focus();
+});
+qs('#user-cancel-btn').addEventListener('click', () => hide(qs('#user-form')));
+
+qs('#user-submit-btn').addEventListener('click', async () => {
+  const username = qs('#user-username-input').value.trim();
+  const password = qs('#user-password-input').value;
+  const role     = qs('#user-role-select').value;
+  qs('#user-form-error').textContent = '';
+  if (!username || !password) { qs('#user-form-error').textContent = 'Username and password required'; return; }
+
+  const res  = await api('POST', '/api/users', { username, password, role });
+  const data = await res.json();
+  if (!res.ok) { qs('#user-form-error').textContent = data.error; return; }
+
+  qs('#user-username-input').value = '';
+  qs('#user-password-input').value = '';
+  hide(qs('#user-form'));
+  loadUsersPanel();
+});
+
+function openUserReset(id, name) {
+  resetTargetId = id;
+  qs('#user-reset-name').textContent = name;
+  qs('#user-reset-pw').value = '';
+  qs('#user-reset-error').textContent = '';
+  show(qs('#user-reset-form'));
+  qs('#user-reset-pw').focus();
+}
+
+qs('#user-reset-cancel-btn').addEventListener('click', () => {
+  hide(qs('#user-reset-form'));
+  resetTargetId = null;
+});
+
+qs('#user-reset-submit-btn').addEventListener('click', async () => {
+  const password = qs('#user-reset-pw').value;
+  qs('#user-reset-error').textContent = '';
+  if (!password) { qs('#user-reset-error').textContent = 'Password required'; return; }
+
+  const res  = await api('PATCH', `/api/users/${resetTargetId}/password`, { password });
+  const data = await res.json();
+  if (!res.ok) { qs('#user-reset-error').textContent = data.error; return; }
+
+  hide(qs('#user-reset-form'));
+  resetTargetId = null;
+});
+
+async function deleteUser(id) {
+  if (!confirm('Delete this user and all their data?')) return;
+  const res = await api('DELETE', `/api/users/${id}`);
+  if (res.ok) loadUsersPanel();
+  else { const d = await res.json(); qs('#users-error').textContent = d.error; }
+}
+
+// ── Audit Log panel (admin) ────────────────────────────────────────────────────
+
+let auditOffset = 0;
+const AUDIT_LIMIT = 50;
+let auditTotal = 0;
+
+async function loadAuditPanel() {
+  qs('#audit-error').textContent = '';
+  // Populate action dropdown on first load
+  const actRes  = await api('GET', '/api/audit/actions');
+  const actions = actRes.ok ? await actRes.json() : [];
+  const sel = qs('#audit-filter-action');
+  if (sel.children.length === 1) { // only the "All actions" option
+    actions.forEach(a => {
+      const opt = document.createElement('option');
+      opt.value = a;
+      opt.textContent = a;
+      sel.appendChild(opt);
+    });
+  }
+  auditOffset = 0;
+  fetchAuditPage();
+}
+
+async function fetchAuditPage() {
+  const username = qs('#audit-filter-user').value.trim();
+  const action   = qs('#audit-filter-action').value;
+  const params   = new URLSearchParams({ limit: AUDIT_LIMIT, offset: auditOffset });
+  if (username) params.set('username', username);
+  if (action)   params.set('action', action);
+
+  const res  = await api('GET', `/api/audit?${params}`);
+  const data = await res.json();
+  if (!res.ok) { qs('#audit-error').textContent = data.error; return; }
+
+  auditTotal = data.total;
+  const tbody = qs('#audit-tbody');
+  tbody.innerHTML = '';
+
+  if (!data.rows.length) {
+    tbody.innerHTML = '<tr><td colspan="6" style="color:var(--muted)">No entries found.</td></tr>';
+  } else {
+    data.rows.forEach(r => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td style="white-space:nowrap">${r.ts?.slice(0, 16) || '—'}</td>
+        <td>${r.username || '—'}</td>
+        <td><code style="font-size:11px">${r.action}</code></td>
+        <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.target || ''}">${r.target || '—'}</td>
+        <td style="font-family:monospace;font-size:11px">${r.ip || '—'}</td>
+        <td>${r.result || '—'}</td>`;
+      tbody.appendChild(tr);
+    });
+  }
+
+  const page = Math.floor(auditOffset / AUDIT_LIMIT) + 1;
+  const pages = Math.max(1, Math.ceil(auditTotal / AUDIT_LIMIT));
+  qs('#audit-page-info').textContent = `Page ${page} of ${pages} (${auditTotal} total)`;
+  qs('#audit-prev-btn').disabled = auditOffset === 0;
+  qs('#audit-next-btn').disabled = auditOffset + AUDIT_LIMIT >= auditTotal;
+}
+
+qs('#audit-search-btn').addEventListener('click', () => { auditOffset = 0; fetchAuditPage(); });
+qs('#audit-prev-btn').addEventListener('click',  () => { auditOffset = Math.max(0, auditOffset - AUDIT_LIMIT); fetchAuditPage(); });
+qs('#audit-next-btn').addEventListener('click',  () => { auditOffset += AUDIT_LIMIT; fetchAuditPage(); });
+
 // ── Boot ──────────────────────────────────────────────────────────────────────
 
 (async function boot() {
@@ -1349,6 +1616,7 @@ qs('#deploy-history-close-btn').addEventListener('click', () => {
       if (!refreshed) { accessToken = null; localStorage.removeItem('zpanel_token'); return; }
     }
     const me = await res.json();
+    currentUser = me;
     qs('#nav-username').textContent = me.username;
     enterDashboard();
   } catch {

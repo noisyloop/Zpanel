@@ -79,4 +79,34 @@ router.get('/me', auth.requireAuth, (req, res) => {
   res.json({ id: req.user.sub, username: req.user.username, role: req.user.role });
 });
 
+// ── API key management ────────────────────────────────────────────────────────
+
+const apiKeys = require('./apiKeys');
+
+// GET /api/auth/keys — list caller's API keys (no plaintext returned)
+router.get('/keys', auth.requireAuth, (req, res) => {
+  res.json(apiKeys.listKeys(req.user.sub));
+});
+
+// POST /api/auth/keys — generate a new API key; plaintext returned once
+router.post('/keys', auth.requireAuth, (req, res) => {
+  const { name } = req.body;
+  if (!name?.trim()) return res.status(400).json({ error: 'name required' });
+  const key = apiKeys.generateKey(req.user.sub, name.trim());
+  auth.audit(req, 'api_key_created', name, null, 'ok');
+  res.status(201).json(key); // includes key.plaintext — show once only
+});
+
+// DELETE /api/auth/keys/:id — revoke a key
+router.delete('/keys/:id', auth.requireAuth, (req, res) => {
+  try {
+    apiKeys.revokeKey(parseInt(req.params.id, 10), req.user.sub);
+    auth.audit(req, 'api_key_revoked', req.params.id, null, 'ok');
+    res.json({ ok: true });
+  } catch (err) {
+    const status = err.code === 'FORBIDDEN' ? 403 : err.message === 'API key not found' ? 404 : 500;
+    res.status(status).json({ error: err.message });
+  }
+});
+
 module.exports = router;
