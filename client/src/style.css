@@ -394,3 +394,88 @@ canvas { display: block; }
 }
 
 .info-msg { color: #4caf82; font-size: 13px; margin-top: 8px; min-height: 18px; }
+
+/* ── Nav separator ─────────────────────────────────────────────────────────── */
+.nav-separator { border-top: 1px solid var(--border); margin: 8px 12px; list-style: none; }
+
+/* ── Panel tabs ────────────────────────────────────────────────────────────── */
+.panel-tabs {
+  display: flex;
+  gap: 2px;
+  margin-bottom: 20px;
+  border-bottom: 1px solid var(--border);
+}
+.tab-btn {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--muted);
+  padding: 8px 16px;
+  font-size: 13px;
+  cursor: pointer;
+  margin-bottom: -1px;
+}
+.tab-btn:hover  { color: var(--text); }
+.tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
+
+/* ── Cron builder ──────────────────────────────────────────────────────────── */
+.cron-builder {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.cron-builder label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+.cron-builder input {
+  text-align: center;
+  margin: 0 !important;
+}
+.cron-preview {
+  font-family: monospace;
+  font-size: 13px;
+  color: var(--accent);
+  margin-bottom: 12px;
+  min-height: 18px;
+}
+
+/* ── Query result table ────────────────────────────────────────────────────── */
+.query-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  margin-top: 8px;
+}
+.query-table th, .query-table td {
+  text-align: left;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  white-space: nowrap;
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.query-table th { background: var(--surface2); color: var(--muted); }
+
+/* ── Textarea ──────────────────────────────────────────────────────────────── */
+.inline-form textarea {
+  display: block;
+  width: 100%;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  padding: 9px 12px;
+  margin-bottom: 12px;
+  font-size: 13px;
+  font-family: monospace;
+  resize: vertical;
+  outline: none;
+}
+.inline-form textarea:focus { border-color: var(--accent); }

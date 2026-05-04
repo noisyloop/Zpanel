@@ -115,10 +115,14 @@ document.querySelectorAll('.nav-btn').forEach(btn => {
 function switchPanel(name) {
   document.querySelectorAll('.panel').forEach(p => hide(p));
   show(qs(`#panel-${name}`));
-  if (name === 'files')   loadDir(currentPath);
-  if (name === 'domains') loadDomains();
-  if (name === 'dns')     loadDnsPanel();
-  if (name === 'ssl')     loadSslPanel();
+  if (name === 'files')     loadDir(currentPath);
+  if (name === 'domains')   loadDomains();
+  if (name === 'dns')       loadDnsPanel();
+  if (name === 'ssl')       loadSslPanel();
+  if (name === 'email')     loadEmailPanel();
+  if (name === 'databases') loadDatabasesPanel();
+  if (name === 'ftp')       loadFtpPanel();
+  if (name === 'cron')      loadCronPanel();
 }
 
 // ── WebSocket stats ───────────────────────────────────────────────────────────
@@ -622,6 +626,400 @@ async function renewCertForDomain(domain) {
   qs('#ssl-message').textContent = data.code === 0
     ? `Renewed ${domain} successfully.` : `Renewal attempted (check certbot logs).`;
   loadSslCerts();
+}
+
+// ── Panel tab switching (shared) ──────────────────────────────────────────────
+
+function initTabs(panelId) {
+  const panel = qs(`#panel-${panelId}`);
+  panel.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      panel.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      panel.querySelectorAll('.tab-panel').forEach(p => hide(p));
+      btn.classList.add('active');
+      show(qs(`#${panelId}-tab-${btn.dataset.tab}`));
+    });
+  });
+}
+
+// ── Email ─────────────────────────────────────────────────────────────────────
+
+initTabs('email');
+
+function refreshEmailDomainSelects(domains) {
+  ['mb-domain-select', 'alias-domain-select', 'dkim-domain-select'].forEach(id => {
+    const sel = qs(`#${id}`);
+    const cur = sel.value;
+    sel.innerHTML = '<option value="">Select domain…</option>';
+    domains.forEach(d => {
+      const opt = document.createElement('option');
+      opt.value = d.id;
+      opt.textContent = d.domain;
+      sel.appendChild(opt);
+    });
+    if (cur) sel.value = cur;
+  });
+}
+
+async function loadEmailPanel() {
+  if (!allDomains.length) {
+    const res = await api('GET', '/api/domains');
+    allDomains = await res.json();
+  }
+  refreshEmailDomainSelects(allDomains);
+  loadMailboxes();
+}
+
+async function loadMailboxes() {
+  qs('#email-error').textContent = '';
+  const res  = await api('GET', '/api/email/mailboxes');
+  const data = await res.json();
+  if (!res.ok) { qs('#email-error').textContent = data.error; return; }
+  const tbody = qs('#mb-tbody');
+  tbody.innerHTML = '';
+  if (!data.length) {
+    tbody.innerHTML = '<tr><td colspan="5" style="color:var(--muted)">No mailboxes yet.</td></tr>';
+    return;
+  }
+  data.forEach(m => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${m.address}</td>
+      <td>${m.domain}</td>
+      <td>${m.quota_mb} MB</td>
+      <td>${m.created_at?.slice(0,10) ?? '—'}</td>
+      <td><button class="action-btn danger" onclick="deleteMailbox(${m.id})">Delete</button></td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+qs('#mb-add-btn').addEventListener('click', () => { show(qs('#mb-form')); qs('#mb-local').focus(); });
+qs('#mb-cancel-btn').addEventListener('click', () => hide(qs('#mb-form')));
+
+qs('#mb-submit-btn').addEventListener('click', async () => {
+  const domainId  = qs('#mb-domain-select').value;
+  const local     = qs('#mb-local').value.trim();
+  const password  = qs('#mb-password').value;
+  const quotaMb   = parseInt(qs('#mb-quota').value, 10) || 500;
+  qs('#mb-form-error').textContent = '';
+
+  if (!domainId || !local || !password) {
+    qs('#mb-form-error').textContent = 'Domain, username, and password required'; return;
+  }
+  const domain  = allDomains.find(d => String(d.id) === domainId);
+  const address = `${local}@${domain?.domain}`;
+
+  const res  = await api('POST', '/api/email/mailboxes', { domainId, address, password, quotaMb });
+  const data = await res.json();
+  if (!res.ok) { qs('#mb-form-error').textContent = data.error; return; }
+  hide(qs('#mb-form'));
+  qs('#mb-local').value = ''; qs('#mb-password').value = '';
+  loadMailboxes();
+});
+
+async function deleteMailbox(id) {
+  if (!confirm('Delete this mailbox and all its mail?')) return;
+  const res = await api('DELETE', `/api/email/mailboxes/${id}`);
+  if (res.ok) loadMailboxes();
+  else { const d = await res.json(); qs('#email-error').textContent = d.error; }
+}
+
+// Aliases
+qs('#alias-domain-select').addEventListener('change', e => {
+  if (e.target.value) loadAliases(e.target.value);
+});
+
+async function loadAliases(domainId) {
+  const res  = await api('GET', `/api/email/aliases?domainId=${domainId}`);
+  const data = await res.json();
+  if (!res.ok) { qs('#email-error').textContent = data.error; return; }
+  const tbody = qs('#alias-tbody');
+  tbody.innerHTML = '';
+  if (!data.length) {
+    tbody.innerHTML = '<tr><td colspan="3" style="color:var(--muted)">No aliases.</td></tr>';
+    return;
+  }
+  data.forEach(a => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${a.source}</td><td>${a.destination}</td>
+      <td><button class="action-btn danger" onclick="deleteAlias(${a.id})">Delete</button></td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+qs('#alias-add-btn').addEventListener('click', () => {
+  if (!qs('#alias-domain-select').value) { qs('#email-error').textContent = 'Select a domain first'; return; }
+  show(qs('#alias-form')); qs('#alias-source').focus();
+});
+qs('#alias-cancel-btn').addEventListener('click', () => hide(qs('#alias-form')));
+
+qs('#alias-submit-btn').addEventListener('click', async () => {
+  const domainId    = qs('#alias-domain-select').value;
+  const source      = qs('#alias-source').value.trim();
+  const destination = qs('#alias-dest').value.trim();
+  qs('#alias-form-error').textContent = '';
+  if (!source || !destination) { qs('#alias-form-error').textContent = 'Source and destination required'; return; }
+  const res  = await api('POST', '/api/email/aliases', { domainId, source, destination });
+  const data = await res.json();
+  if (!res.ok) { qs('#alias-form-error').textContent = data.error; return; }
+  hide(qs('#alias-form'));
+  qs('#alias-source').value = ''; qs('#alias-dest').value = '';
+  loadAliases(domainId);
+});
+
+async function deleteAlias(id) {
+  if (!confirm('Delete this alias?')) return;
+  const res = await api('DELETE', `/api/email/aliases/${id}`);
+  if (res.ok) loadAliases(qs('#alias-domain-select').value);
+  else { const d = await res.json(); qs('#email-error').textContent = d.error; }
+}
+
+// DKIM
+qs('#dkim-gen-btn').addEventListener('click', async () => {
+  const domainId = qs('#dkim-domain-select').value;
+  if (!domainId) { qs('#dkim-error').textContent = 'Select a domain first'; return; }
+  qs('#dkim-error').textContent = '';
+  const res  = await api('POST', '/api/email/dkim', { domainId, selector: 'mail' });
+  const data = await res.json();
+  if (!res.ok) { qs('#dkim-error').textContent = data.error; return; }
+  const pre = qs('#dkim-output');
+  pre.style.display = 'block';
+  pre.textContent = [
+    '=== DKIM key generated ===',
+    data.txtContent || '(key file written to ' + data.keyDir + ')',
+    '',
+    '=== Suggested DNS records ===',
+    ...(data.suggestedDnsRecords || []).map(r =>
+      `${r.name.padEnd(28)} ${r.ttl} IN ${r.type.padEnd(6)} ${r.priority != null ? r.priority + ' ' : ''}${r.value}`
+    ),
+  ].join('\n');
+});
+
+qs('#email-config-btn').addEventListener('click', async () => {
+  const domainId = qs('#dkim-domain-select').value;
+  if (!domainId) { qs('#dkim-error').textContent = 'Select a domain first'; return; }
+  const res  = await api('GET', `/api/email/config/${domainId}`);
+  const data = await res.json();
+  if (!res.ok) { qs('#dkim-error').textContent = data.error; return; }
+  const pre = qs('#dkim-output');
+  pre.style.display = 'block';
+  pre.textContent = '=== /etc/postfix/main.cf additions ===\n\n' + data.mainCfSnippet +
+    '\n=== Suggested DNS records ===\n' +
+    (data.suggestedDnsRecords || []).map(r =>
+      `${r.name.padEnd(28)} ${r.ttl} IN ${r.type.padEnd(6)} ${r.priority != null ? r.priority + ' ' : ''}${r.value}`
+    ).join('\n');
+});
+
+// ── Databases ─────────────────────────────────────────────────────────────────
+
+let activeDatabaseId = null;
+
+async function loadDatabasesPanel() {
+  qs('#db-error').textContent = '';
+  const res  = await api('GET', '/api/databases');
+  const data = await res.json();
+  if (!res.ok) { qs('#db-error').textContent = data.error; return; }
+  renderDatabases(data);
+}
+
+function renderDatabases(rows) {
+  const tbody = qs('#db-tbody');
+  tbody.innerHTML = '';
+  if (!rows.length) {
+    tbody.innerHTML = '<tr><td colspan="5" style="color:var(--muted)">No databases yet.</td></tr>';
+    return;
+  }
+  rows.forEach(d => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${d.db_name}</td><td>${d.db_user}</td><td>${d.db_host}</td>
+      <td>${d.created_at?.slice(0,10) ?? '—'}</td>
+      <td>
+        <button class="action-btn" onclick="openQueryPanel(${d.id},'${d.db_name}')">Query</button>
+        <button class="action-btn danger" onclick="dropDatabase(${d.id},'${d.db_name}')">Drop</button>
+      </td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+qs('#db-add-btn').addEventListener('click', () => { show(qs('#db-form')); qs('#db-name-input').focus(); });
+qs('#db-cancel-btn').addEventListener('click', () => hide(qs('#db-form')));
+
+qs('#db-submit-btn').addEventListener('click', async () => {
+  const dbName     = qs('#db-name-input').value.trim();
+  const dbUser     = qs('#db-user-input').value.trim();
+  const dbPassword = qs('#db-pass-input').value;
+  qs('#db-form-error').textContent = '';
+  if (!dbName || !dbUser || !dbPassword) {
+    qs('#db-form-error').textContent = 'All fields required'; return;
+  }
+  const res  = await api('POST', '/api/databases', { dbName, dbUser, dbPassword });
+  const data = await res.json();
+  if (!res.ok) { qs('#db-form-error').textContent = data.error; return; }
+  hide(qs('#db-form'));
+  ['#db-name-input','#db-user-input','#db-pass-input'].forEach(s => { qs(s).value = ''; });
+  loadDatabasesPanel();
+});
+
+async function dropDatabase(id, name) {
+  if (!confirm(`Drop database "${name}" and its user? This cannot be undone.`)) return;
+  const res = await api('DELETE', `/api/databases/${id}`);
+  if (res.ok) loadDatabasesPanel();
+  else { const d = await res.json(); qs('#db-error').textContent = d.error; }
+}
+
+function openQueryPanel(id, name) {
+  activeDatabaseId = id;
+  qs('#db-query-name').textContent = name;
+  qs('#db-query-input').value = '';
+  qs('#db-query-result').innerHTML = '';
+  show(qs('#db-query-panel'));
+}
+
+qs('#db-query-close-btn').addEventListener('click', () => {
+  hide(qs('#db-query-panel'));
+  activeDatabaseId = null;
+});
+
+qs('#db-query-run-btn').addEventListener('click', async () => {
+  const query = qs('#db-query-input').value.trim();
+  if (!query || !activeDatabaseId) return;
+  const res  = await api('POST', `/api/databases/${activeDatabaseId}/query`, { query });
+  const data = await res.json();
+  const result = qs('#db-query-result');
+  if (!res.ok) { result.innerHTML = `<p class="error">${data.error}</p>`; return; }
+  if (!data.columns?.length) { result.innerHTML = '<p style="color:var(--muted)">No results.</p>'; return; }
+  const hdrs  = data.columns.map(c => `<th>${c}</th>`).join('');
+  const body  = data.rows.map(row =>
+    `<tr>${data.columns.map(c => `<td>${row[c] ?? 'NULL'}</td>`).join('')}</tr>`
+  ).join('');
+  result.innerHTML = `<table class="query-table"><thead><tr>${hdrs}</tr></thead><tbody>${body}</tbody></table>
+    <p style="color:var(--muted);font-size:12px;margin-top:6px">${data.rows.length} row(s) returned</p>`;
+});
+
+// ── FTP ───────────────────────────────────────────────────────────────────────
+
+async function loadFtpPanel() {
+  qs('#ftp-error').textContent = '';
+  const res  = await api('GET', '/api/ftp');
+  const data = await res.json();
+  if (!res.ok) { qs('#ftp-error').textContent = data.error; return; }
+  const tbody = qs('#ftp-tbody');
+  tbody.innerHTML = '';
+  if (!data.length) {
+    tbody.innerHTML = '<tr><td colspan="4" style="color:var(--muted)">No FTP accounts yet.</td></tr>';
+    return;
+  }
+  data.forEach(a => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${a.ftp_user}</td>
+      <td style="font-family:monospace;font-size:12px">${a.chroot_dir}</td>
+      <td>${a.created_at?.slice(0,10) ?? '—'}</td>
+      <td><button class="action-btn danger" onclick="deleteFtp(${a.id},'${a.ftp_user}')">Delete</button></td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+qs('#ftp-add-btn').addEventListener('click', () => { show(qs('#ftp-form')); qs('#ftp-user-input').focus(); });
+qs('#ftp-cancel-btn').addEventListener('click', () => hide(qs('#ftp-form')));
+
+qs('#ftp-submit-btn').addEventListener('click', async () => {
+  const ftpUser   = qs('#ftp-user-input').value.trim();
+  const password  = qs('#ftp-pass-input').value;
+  const chrootDir = qs('#ftp-chroot-input').value.trim();
+  qs('#ftp-form-error').textContent = '';
+  if (!ftpUser || !password || !chrootDir) {
+    qs('#ftp-form-error').textContent = 'All fields required'; return;
+  }
+  const res  = await api('POST', '/api/ftp', { ftpUser, password, chrootDir });
+  const data = await res.json();
+  if (!res.ok) { qs('#ftp-form-error').textContent = data.error; return; }
+  hide(qs('#ftp-form'));
+  ['#ftp-user-input','#ftp-pass-input','#ftp-chroot-input'].forEach(s => { qs(s).value = ''; });
+  loadFtpPanel();
+});
+
+async function deleteFtp(id, user) {
+  if (!confirm(`Delete FTP account "${user}"?`)) return;
+  const res = await api('DELETE', `/api/ftp/${id}`);
+  if (res.ok) loadFtpPanel();
+  else { const d = await res.json(); qs('#ftp-error').textContent = d.error; }
+}
+
+qs('#ftp-config-btn').addEventListener('click', async () => {
+  const pre = qs('#ftp-config-output');
+  if (pre.style.display !== 'none') { pre.style.display = 'none'; return; }
+  const res  = await api('GET', '/api/ftp/config');
+  const data = await res.json();
+  pre.textContent = data.config;
+  pre.style.display = 'block';
+});
+
+// ── Cron Jobs ─────────────────────────────────────────────────────────────────
+
+async function loadCronPanel() {
+  qs('#cron-error').textContent = '';
+  const res  = await api('GET', '/api/cron');
+  const data = await res.json();
+  if (!res.ok) { qs('#cron-error').textContent = data.error; return; }
+  const tbody = qs('#cron-tbody');
+  tbody.innerHTML = '';
+  if (!data.length) {
+    tbody.innerHTML = '<tr><td colspan="4" style="color:var(--muted)">No cron jobs yet.</td></tr>';
+    return;
+  }
+  data.forEach(j => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td style="font-family:monospace">${j.expression}</td>
+      <td style="font-family:monospace;font-size:12px">${j.command}</td>
+      <td>${j.system_user}</td>
+      <td><button class="action-btn danger" onclick="deleteCronJob(${j.id})">Delete</button></td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+qs('#cron-add-btn').addEventListener('click', () => { show(qs('#cron-form')); updateCronPreview(); });
+qs('#cron-cancel-btn').addEventListener('click', () => hide(qs('#cron-form')));
+
+function updateCronPreview() {
+  const expr = [
+    qs('#cron-min').value || '*',
+    qs('#cron-hour').value || '*',
+    qs('#cron-dom').value || '*',
+    qs('#cron-month').value || '*',
+    qs('#cron-dow').value || '*',
+  ].join(' ');
+  qs('#cron-expr-preview').textContent = expr;
+}
+
+['#cron-min','#cron-hour','#cron-dom','#cron-month','#cron-dow'].forEach(sel => {
+  qs(sel).addEventListener('input', updateCronPreview);
+});
+
+qs('#cron-submit-btn').addEventListener('click', async () => {
+  const systemUser = qs('#cron-sysuser').value.trim();
+  const expression = qs('#cron-expr-preview').textContent.trim();
+  const command    = qs('#cron-cmd').value.trim();
+  qs('#cron-form-error').textContent = '';
+  if (!systemUser || !command) {
+    qs('#cron-form-error').textContent = 'System user and command required'; return;
+  }
+  const res  = await api('POST', '/api/cron', { systemUser, expression, command });
+  const data = await res.json();
+  if (!res.ok) { qs('#cron-form-error').textContent = data.error; return; }
+  hide(qs('#cron-form'));
+  ['#cron-sysuser','#cron-cmd'].forEach(s => { qs(s).value = ''; });
+  ['#cron-min','#cron-hour','#cron-dom','#cron-month','#cron-dow'].forEach(s => { qs(s).value = '*'; });
+  loadCronPanel();
+});
+
+async function deleteCronJob(id) {
+  if (!confirm('Delete this cron job?')) return;
+  const res = await api('DELETE', `/api/cron/${id}`);
+  if (res.ok) loadCronPanel();
+  else { const d = await res.json(); qs('#cron-error').textContent = d.error; }
 }
 
 // ── Boot ──────────────────────────────────────────────────────────────────────

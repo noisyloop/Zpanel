@@ -21,6 +21,18 @@ const COMMAND_WHITELIST = {
                                                    /^--email=[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$/,
                                                    '--expand', '--redirect', '--dry-run'] },
   'named-checkzone': { bin: 'named-checkzone', argPatterns: [/^[a-zA-Z0-9._-]+\.$/, /^\/[a-zA-Z0-9/_.-]+$/] },
+
+  // Phase 3 — Email / Databases / FTP / Cron
+  postfix:    { bin: 'postfix',     argPatterns: ['reload', 'start', 'stop', 'status', 'flush', 'check'] },
+  postmap:    { bin: 'postmap',     argPatterns: [/^hash:\/etc\/postfix\/[a-zA-Z0-9_/-]+$/] },
+  newaliases: { bin: 'newaliases',  argPatterns: [] },
+  doveadm:    { bin: 'doveadm',     argPatterns: ['reload', 'stop',
+                                                   /^user$/i, /^quota$/i, /^get$/i, /^set$/i,
+                                                   /^-u$/, /^[a-zA-Z0-9._@+-]+$/, 'recalc'] },
+  'opendkim-genkey': { bin: 'opendkim-genkey',
+                       argPatterns: [/^-s$/, /^[a-zA-Z0-9_-]+$/, /^-d$/, /^[a-zA-Z0-9._-]+$/, '-r', '-b', '2048'] },
+  vsftpd:     { bin: 'vsftpd',      argPatterns: [/^\/etc\/vsftpd\/[a-zA-Z0-9_.-]+\.conf$/] },
+  crontab:    { bin: 'crontab',     argPatterns: ['-l', '-r', /^-u$/, /^[a-zA-Z0-9_-]+$/, /^\/tmp\/[a-zA-Z0-9_./-]+$/] },
 };
 
 const LOG_DIR = path.join(__dirname, '../logs');

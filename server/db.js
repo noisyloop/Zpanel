@@ -73,6 +73,57 @@ db.exec(`
     last_check  TEXT,
     status      TEXT    NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','active','expired','failed'))
   );
+
+  -- Phase 3: email mailboxes
+  CREATE TABLE IF NOT EXISTS mailboxes (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    domain_id   INTEGER NOT NULL REFERENCES domains(id) ON DELETE CASCADE,
+    address     TEXT    NOT NULL UNIQUE,
+    password    TEXT    NOT NULL,
+    quota_mb    INTEGER NOT NULL DEFAULT 500,
+    created_at  TEXT    NOT NULL DEFAULT (datetime('now'))
+  );
+
+  -- Phase 3: email aliases
+  CREATE TABLE IF NOT EXISTS email_aliases (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    domain_id   INTEGER NOT NULL REFERENCES domains(id) ON DELETE CASCADE,
+    source      TEXT    NOT NULL,
+    destination TEXT    NOT NULL,
+    created_at  TEXT    NOT NULL DEFAULT (datetime('now'))
+  );
+
+  -- Phase 3: MySQL databases
+  CREATE TABLE IF NOT EXISTS databases (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    db_name     TEXT    NOT NULL UNIQUE,
+    db_user     TEXT    NOT NULL,
+    db_host     TEXT    NOT NULL DEFAULT 'localhost',
+    created_at  TEXT    NOT NULL DEFAULT (datetime('now'))
+  );
+
+  -- Phase 3: FTP accounts
+  CREATE TABLE IF NOT EXISTS ftp_accounts (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    ftp_user    TEXT    NOT NULL UNIQUE,
+    chroot_dir  TEXT    NOT NULL,
+    created_at  TEXT    NOT NULL DEFAULT (datetime('now'))
+  );
+
+  -- Phase 3: cron jobs
+  CREATE TABLE IF NOT EXISTS cron_jobs (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    system_user TEXT    NOT NULL,
+    expression  TEXT    NOT NULL,
+    command     TEXT    NOT NULL,
+    last_output TEXT,
+    last_run    TEXT,
+    created_at  TEXT    NOT NULL DEFAULT (datetime('now'))
+  );
 `);
 
 module.exports = db;
