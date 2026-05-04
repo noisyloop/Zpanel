@@ -30,6 +30,10 @@ app.use('/api/email',     require('./modules/email/routes'));
 app.use('/api/databases', require('./modules/databases/routes'));
 app.use('/api/ftp',       require('./modules/ftp/routes'));
 app.use('/api/cron',      require('./modules/cron/routes'));
+app.use('/api/apps',      require('./modules/apps/routes'));
+app.use('/api/processes', require('./modules/processes/routes'));
+app.use('/api/isolation', require('./modules/isolation/routes'));
+app.use('/api/deploy',    require('./modules/deploy/routes'));
 
 // SPA fallback — serve index.html for all non-API routes
 app.get('*', (req, res) => {
@@ -41,8 +45,9 @@ app.get('*', (req, res) => {
 
 // ── HTTP + WebSocket server ───────────────────────────────────────────────────
 
-const server = http.createServer(app);
-const wss    = new WebSocket.Server({ server, path: '/ws/stats' });
+const server  = http.createServer(app);
+const wss     = new WebSocket.Server({ server, path: '/ws/stats' });
+const wssLogs = new WebSocket.Server({ server, path: '/ws/logs' });
 
 wss.on('connection', (ws, req) => {
   // Expect token as query param: /ws/stats?token=<jwt>
@@ -65,6 +70,39 @@ wss.on('connection', (ws, req) => {
   }, 2000);
 
   ws.on('close', () => clearInterval(interval));
+});
+
+// ── PM2 log streaming WebSocket: /ws/logs?token=<jwt>&name=<pm2name> ─────────
+const pm2Procs = require('./modules/processes');
+
+wssLogs.on('connection', (ws, req) => {
+  const url  = new URL(req.url, 'http://localhost');
+  const token = url.searchParams.get('token');
+  const name  = url.searchParams.get('name');
+
+  try { verifyAccessToken(token); } catch {
+    ws.close(4001, 'Unauthorized'); return;
+  }
+  if (!name) { ws.close(4002, 'name required'); return; }
+
+  let proc;
+  try {
+    proc = pm2Procs.tailLogs(name, 50);
+  } catch (err) {
+    ws.send(JSON.stringify({ error: err.message }));
+    ws.close(); return;
+  }
+
+  const send = chunk => {
+    if (ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ line: chunk.toString() }));
+    }
+  };
+
+  proc.stdout.on('data', send);
+  proc.stderr.on('data', send);
+  proc.on('close', () => { if (ws.readyState === WebSocket.OPEN) ws.close(); });
+  ws.on('close', () => { try { proc.kill(); } catch { /* already gone */ } });
 });
 
 // ── Seed default admin if no users exist ──────────────────────────────────────
