@@ -479,3 +479,27 @@ canvas { display: block; }
   outline: none;
 }
 .inline-form textarea:focus { border-color: var(--accent); }
+
+/* ── Install log stream ────────────────────────────────────────────────────── */
+.install-log {
+  height: 200px;
+  overflow-y: auto;
+  scroll-behavior: smooth;
+}
+
+/* ── Process status dots ───────────────────────────────────────────────────── */
+.proc-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.proc-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.dot-online  { background: #4caf82; }
+.dot-stopped { background: var(--muted); }
+.dot-errored { background: var(--danger); }
+.dot-unknown { background: #c9b44f; }

@@ -37,6 +37,10 @@
           <li><button class="nav-btn" data-panel="databases">Databases</button></li>
           <li><button class="nav-btn" data-panel="ftp">FTP</button></li>
           <li><button class="nav-btn" data-panel="cron">Cron Jobs</button></li>
+          <li class="nav-separator"></li>
+          <li><button class="nav-btn" data-panel="apps">App Installer</button></li>
+          <li><button class="nav-btn" data-panel="processes">Processes</button></li>
+          <li><button class="nav-btn" data-panel="deploy">Git Deploy</button></li>
         </ul>
         <div class="sidebar-footer">
           <span id="nav-username"></span>
@@ -354,6 +358,126 @@
             <p id="cron-form-error" class="error"></p>
           </div>
           <p id="cron-error" class="error"></p>
+        </section>
+
+        <!-- App Installer panel -->
+        <section id="panel-apps" class="panel hidden">
+          <h2>App Installer</h2>
+          <div class="panel-tabs">
+            <button class="tab-btn active" data-tab="installed">Installed</button>
+            <button class="tab-btn" data-tab="wordpress">WordPress</button>
+            <button class="tab-btn" data-tab="ghost">Ghost</button>
+            <button class="tab-btn" data-tab="static">Static Site</button>
+          </div>
+
+          <div id="apps-tab-installed" class="tab-panel">
+            <table class="data-table">
+              <thead><tr><th>Type</th><th>Directory</th><th>Database</th><th>PM2</th><th>Status</th><th>Actions</th></tr></thead>
+              <tbody id="apps-tbody"></tbody>
+            </table>
+          </div>
+
+          <div id="apps-tab-wordpress" class="tab-panel hidden">
+            <div class="inline-form" style="max-width:480px">
+              <h3>Install WordPress</h3>
+              <select id="wp-domain-select"><option value="">Select domain (optional)…</option></select>
+              <input id="wp-install-dir" type="text" placeholder="Install directory (e.g. /var/www/user/site/public_html)" />
+              <input id="wp-db-name"     type="text" placeholder="Database name" />
+              <input id="wp-db-user"     type="text" placeholder="Database user" />
+              <input id="wp-db-pass"     type="password" placeholder="Database password" />
+              <input id="wp-site-url"    type="text" placeholder="Site URL (https://example.com)" />
+              <input id="wp-admin-email" type="email" placeholder="Admin email" />
+              <button id="wp-install-btn" class="btn-primary" style="width:100%">Install WordPress</button>
+              <pre id="wp-log" class="zone-pre" style="display:none;margin-top:12px"></pre>
+            </div>
+          </div>
+
+          <div id="apps-tab-ghost" class="tab-panel hidden">
+            <div class="inline-form" style="max-width:480px">
+              <h3>Install Ghost</h3>
+              <select id="ghost-domain-select"><option value="">Select domain (optional)…</option></select>
+              <input id="ghost-install-dir" type="text" placeholder="Install directory" />
+              <input id="ghost-site-url"    type="text" placeholder="Site URL (https://blog.example.com)" />
+              <input id="ghost-pm2-name"    type="text" placeholder="PM2 process name" />
+              <button id="ghost-install-btn" class="btn-primary" style="width:100%">Install Ghost</button>
+              <pre id="ghost-log" class="zone-pre" style="display:none;margin-top:12px"></pre>
+            </div>
+          </div>
+
+          <div id="apps-tab-static" class="tab-panel hidden">
+            <div class="inline-form" style="max-width:480px">
+              <h3>Deploy Static Site</h3>
+              <select id="static-domain-select"><option value="">Select domain (optional)…</option></select>
+              <input id="static-install-dir"  type="text" placeholder="Deploy directory" />
+              <input id="static-archive-path" type="text" placeholder="Path to .zip archive on server" />
+              <button id="static-install-btn" class="btn-primary" style="width:100%">Deploy</button>
+              <pre id="static-log" class="zone-pre" style="display:none;margin-top:12px"></pre>
+            </div>
+          </div>
+
+          <p id="apps-error" class="error"></p>
+        </section>
+
+        <!-- Processes panel -->
+        <section id="panel-processes" class="panel hidden">
+          <h2>Processes (PM2)</h2>
+          <div class="panel-toolbar">
+            <button id="proc-refresh-btn" class="btn-ghost">Refresh</button>
+            <button id="proc-save-btn" class="btn-ghost">pm2 save</button>
+          </div>
+          <table class="data-table">
+            <thead><tr><th>ID</th><th>Name</th><th>Status</th><th>CPU%</th><th>Mem MB</th><th>Restarts</th><th>Actions</th></tr></thead>
+            <tbody id="proc-tbody"></tbody>
+          </table>
+          <!-- Live log viewer -->
+          <div id="proc-log-panel" class="inline-form hidden" style="max-width:100%">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+              <h3>Logs — <span id="proc-log-name"></span></h3>
+              <button id="proc-log-close-btn" class="btn-ghost">Close</button>
+            </div>
+            <pre id="proc-log-output" class="zone-pre" style="height:260px;overflow-y:auto"></pre>
+          </div>
+          <p id="proc-error" class="error"></p>
+        </section>
+
+        <!-- Git Deploy panel -->
+        <section id="panel-deploy" class="panel hidden">
+          <h2>Git Deploy Hooks</h2>
+          <div class="panel-toolbar">
+            <button id="deploy-add-btn" class="btn-primary">+ New Hook</button>
+          </div>
+          <table class="data-table">
+            <thead><tr><th>Name</th><th>Directory</th><th>Branch</th><th>Build Cmd</th><th>PM2</th><th>Actions</th></tr></thead>
+            <tbody id="deploy-tbody"></tbody>
+          </table>
+
+          <div id="deploy-form" class="inline-form hidden">
+            <h3>New Deploy Hook</h3>
+            <input id="deploy-name"       type="text" placeholder="Hook name (e.g. my-site)" />
+            <input id="deploy-dir"        type="text" placeholder="Deploy directory (/var/www/…)" />
+            <input id="deploy-branch"     type="text" placeholder="Branch (default: main)" value="main" />
+            <input id="deploy-build-cmd"  type="text" placeholder="Build command (e.g. npm install --prefix /path)" />
+            <input id="deploy-pm2-name"   type="text" placeholder="PM2 process to restart (optional)" />
+            <div class="form-row">
+              <button id="deploy-submit-btn" class="btn-primary">Create</button>
+              <button id="deploy-cancel-btn" class="btn-ghost">Cancel</button>
+            </div>
+            <p id="deploy-form-error" class="error"></p>
+          </div>
+
+          <!-- Deploy history (shown when a hook is selected) -->
+          <div id="deploy-history-panel" class="inline-form hidden" style="max-width:100%">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+              <h3>History — <span id="deploy-history-name"></span></h3>
+              <button id="deploy-history-close-btn" class="btn-ghost">Close</button>
+            </div>
+            <p id="deploy-webhook-url" class="cron-preview" style="word-break:break-all"></p>
+            <table class="data-table">
+              <thead><tr><th>Status</th><th>Commit</th><th>Message</th><th>Started</th><th>Output</th></tr></thead>
+              <tbody id="deploy-history-tbody"></tbody>
+            </table>
+          </div>
+          <p id="deploy-error" class="error"></p>
         </section>
       </main>
     </div>

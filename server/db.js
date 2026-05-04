@@ -124,6 +124,57 @@ db.exec(`
     last_run    TEXT,
     created_at  TEXT    NOT NULL DEFAULT (datetime('now'))
   );
+
+  -- Phase 4: one-click installed apps
+  CREATE TABLE IF NOT EXISTS installed_apps (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    domain_id   INTEGER REFERENCES domains(id) ON DELETE SET NULL,
+    app_type    TEXT    NOT NULL CHECK(app_type IN ('wordpress','ghost','static')),
+    app_version TEXT,
+    install_dir TEXT    NOT NULL,
+    db_name     TEXT,
+    db_user     TEXT,
+    pm2_name    TEXT,
+    status      TEXT    NOT NULL DEFAULT 'installing' CHECK(status IN ('installing','active','failed','removed')),
+    created_at  TEXT    NOT NULL DEFAULT (datetime('now'))
+  );
+
+  -- Phase 4: deploy webhook hooks
+  CREATE TABLE IF NOT EXISTS deploy_hooks (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name        TEXT    NOT NULL,
+    deploy_dir  TEXT    NOT NULL,
+    branch      TEXT    NOT NULL DEFAULT 'main',
+    secret      TEXT    NOT NULL,
+    build_cmd   TEXT,
+    pm2_name    TEXT,
+    created_at  TEXT    NOT NULL DEFAULT (datetime('now'))
+  );
+
+  -- Phase 4: deploy history
+  CREATE TABLE IF NOT EXISTS deploy_history (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    hook_id     INTEGER NOT NULL REFERENCES deploy_hooks(id) ON DELETE CASCADE,
+    commit_sha  TEXT,
+    commit_msg  TEXT,
+    triggered_by TEXT,
+    output      TEXT,
+    status      TEXT    NOT NULL DEFAULT 'running' CHECK(status IN ('running','success','failed')),
+    started_at  TEXT    NOT NULL DEFAULT (datetime('now')),
+    finished_at TEXT
+  );
+
+  -- Phase 4: system users (per Zpanel account)
+  CREATE TABLE IF NOT EXISTS system_users (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id     INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+    system_user TEXT    NOT NULL UNIQUE,
+    home_dir    TEXT    NOT NULL,
+    quota_mb    INTEGER NOT NULL DEFAULT 2048,
+    created_at  TEXT    NOT NULL DEFAULT (datetime('now'))
+  );
 `);
 
 module.exports = db;

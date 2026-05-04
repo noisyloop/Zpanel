@@ -33,6 +33,29 @@ const COMMAND_WHITELIST = {
                        argPatterns: [/^-s$/, /^[a-zA-Z0-9_-]+$/, /^-d$/, /^[a-zA-Z0-9._-]+$/, '-r', '-b', '2048'] },
   vsftpd:     { bin: 'vsftpd',      argPatterns: [/^\/etc\/vsftpd\/[a-zA-Z0-9_.-]+\.conf$/] },
   crontab:    { bin: 'crontab',     argPatterns: ['-l', '-r', /^-u$/, /^[a-zA-Z0-9_-]+$/, /^\/tmp\/[a-zA-Z0-9_./-]+$/] },
+
+  // Phase 4 — App installer / PM2 / isolation / git deploy
+  wget:        { bin: 'wget',       argPatterns: ['-q', '-O', /^\/[a-zA-Z0-9/_.-]+$/, /^https?:\/\/[a-zA-Z0-9._/%-]+$/] },
+  tar:         { bin: 'tar',        argPatterns: [/^-?[xzf]+$/, /^--strip-components=\d+$/, /^-C$/, /^\/[a-zA-Z0-9/_.-]+$/] },
+  unzip:       { bin: 'unzip',      argPatterns: ['-q', '-o', /^\/[a-zA-Z0-9/_.-]+$/, /^-d$/] },
+  chmod:       { bin: 'chmod',      argPatterns: ['-R', /^[0-7]{3,4}$/, /^\/[a-zA-Z0-9/_.-]+$/] },
+  chown:       { bin: 'chown',      argPatterns: ['-R', /^[a-zA-Z0-9_-]+:[a-zA-Z0-9_-]+$/, /^\/[a-zA-Z0-9/_.-]+$/] },
+  useradd:     { bin: 'useradd',    argPatterns: ['-m', '-s', '-d', '-g', '/bin/bash', '/usr/sbin/nologin',
+                                                  /^[a-zA-Z0-9_-]{1,32}$/, /^\/[a-zA-Z0-9/_.-]+$/] },
+  userdel:     { bin: 'userdel',    argPatterns: ['-r', /^[a-zA-Z0-9_-]{1,32}$/] },
+  setquota:    { bin: 'setquota',   argPatterns: ['-u', /^[a-zA-Z0-9_-]+$/, /^\d+$/, /^\/$/] },
+  repquota:    { bin: 'repquota',   argPatterns: ['-u', '-a', /^\/$/] },
+  npm:         { bin: 'npm',        argPatterns: ['install', '--prefix', /^\/[a-zA-Z0-9/_.-]+$/, '--production', '--omit=dev'] },
+  composer:    { bin: 'composer',   argPatterns: ['install', '--no-dev', '--optimize-autoloader',
+                                                  '--working-dir', /^\/[a-zA-Z0-9/_.-]+$/] },
+  pm2:         { bin: 'pm2',        argPatterns: ['start', 'stop', 'restart', 'delete', 'save', 'startup',
+                                                  'list', 'jlist', 'logs', '--lines',
+                                                  /^\d+$/, /^[a-zA-Z0-9_.-]+$/, '--no-daemon',
+                                                  '--name', /^[a-zA-Z0-9_.-]{1,64}$/,
+                                                  '--cwd', /^\/[a-zA-Z0-9/_.-]+$/] },
+  git:         { bin: 'git',        argPatterns: ['-C', 'pull', 'fetch', 'checkout', 'rev-parse', 'log',
+                                                  '--oneline', '-1', 'HEAD', 'origin',
+                                                  /^\/[a-zA-Z0-9/_.-]+$/, /^[a-zA-Z0-9_./\-]+$/] },
 };
 
 const LOG_DIR = path.join(__dirname, '../logs');

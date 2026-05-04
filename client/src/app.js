@@ -1022,6 +1022,320 @@ async function deleteCronJob(id) {
   else { const d = await res.json(); qs('#cron-error').textContent = d.error; }
 }
 
+// ── App Installer ─────────────────────────────────────────────────────────────
+
+initTabs('apps');
+
+function refreshAppDomainSelects(domains) {
+  ['wp-domain-select','ghost-domain-select','static-domain-select'].forEach(id => {
+    const sel = qs(`#${id}`);
+    sel.innerHTML = '<option value="">Select domain (optional)…</option>';
+    domains.forEach(d => {
+      const opt = document.createElement('option');
+      opt.value = d.id; opt.textContent = d.domain;
+      sel.appendChild(opt);
+    });
+  });
+}
+
+async function loadAppsPanel() {
+  if (!allDomains.length) {
+    const res = await api('GET', '/api/domains');
+    allDomains = await res.json();
+  }
+  refreshAppDomainSelects(allDomains);
+  loadInstalledApps();
+}
+
+async function loadInstalledApps() {
+  const res  = await api('GET', '/api/apps');
+  const data = await res.json();
+  if (!res.ok) { qs('#apps-error').textContent = data.error; return; }
+  const tbody = qs('#apps-tbody');
+  tbody.innerHTML = '';
+  if (!data.length) {
+    tbody.innerHTML = '<tr><td colspan="6" style="color:var(--muted)">No apps installed yet.</td></tr>';
+    return;
+  }
+  data.forEach(a => {
+    const statusClass = a.status === 'active' ? 'badge-active' : a.status === 'failed' ? 'badge-failed' : 'badge-pending';
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td><span class="badge badge-active">${a.app_type}</span></td>
+      <td style="font-family:monospace;font-size:12px">${a.install_dir}</td>
+      <td>${a.db_name || '—'}</td>
+      <td>${a.pm2_name || '—'}</td>
+      <td><span class="badge ${statusClass}">${a.status}</span></td>
+      <td><button class="action-btn danger" onclick="uninstallApp(${a.id},'${a.app_type}')">Uninstall</button></td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+function streamInstall(url, body, logEl, btnEl) {
+  logEl.style.display = 'block';
+  logEl.textContent   = '';
+  btnEl.disabled      = true;
+
+  return fetch(url, {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+    body:    JSON.stringify(body),
+  }).then(res => {
+    const reader = res.body.getReader();
+    const dec    = new TextDecoder();
+    function pump() {
+      return reader.read().then(({ done, value }) => {
+        if (done) { btnEl.disabled = false; loadInstalledApps(); return; }
+        const text = dec.decode(value);
+        text.split('\n').filter(l => l.startsWith('data:')).forEach(line => {
+          try {
+            const d = JSON.parse(line.slice(5));
+            if (d.log)   { logEl.textContent += d.log + '\n'; logEl.scrollTop = logEl.scrollHeight; }
+            if (d.error) { logEl.textContent += '✗ ' + d.error + '\n'; }
+            if (d.done)  { logEl.textContent += '✓ Complete\n'; }
+          } catch { /* partial chunk */ }
+        });
+        return pump();
+      });
+    }
+    return pump();
+  }).catch(err => {
+    logEl.textContent += '✗ ' + err.message;
+    btnEl.disabled = false;
+  });
+}
+
+qs('#wp-install-btn').addEventListener('click', () => {
+  streamInstall('/api/apps/wordpress', {
+    domainId:    qs('#wp-domain-select').value || null,
+    installDir:  qs('#wp-install-dir').value.trim(),
+    dbName:      qs('#wp-db-name').value.trim(),
+    dbUser:      qs('#wp-db-user').value.trim(),
+    dbPassword:  qs('#wp-db-pass').value,
+    siteUrl:     qs('#wp-site-url').value.trim(),
+    adminEmail:  qs('#wp-admin-email').value.trim(),
+  }, qs('#wp-log'), qs('#wp-install-btn'));
+});
+
+qs('#ghost-install-btn').addEventListener('click', () => {
+  streamInstall('/api/apps/ghost', {
+    domainId:   qs('#ghost-domain-select').value || null,
+    installDir: qs('#ghost-install-dir').value.trim(),
+    siteUrl:    qs('#ghost-site-url').value.trim(),
+    pm2Name:    qs('#ghost-pm2-name').value.trim() || undefined,
+  }, qs('#ghost-log'), qs('#ghost-install-btn'));
+});
+
+qs('#static-install-btn').addEventListener('click', () => {
+  streamInstall('/api/apps/static', {
+    domainId:    qs('#static-domain-select').value || null,
+    installDir:  qs('#static-install-dir').value.trim(),
+    archivePath: qs('#static-archive-path').value.trim(),
+  }, qs('#static-log'), qs('#static-install-btn'));
+});
+
+async function uninstallApp(id, type) {
+  if (!confirm(`Uninstall this ${type} app? Files and database will be deleted.`)) return;
+  const logEl = document.createElement('pre');
+  logEl.className = 'zone-pre';
+  qs('#apps-error').after(logEl);
+
+  const res = await fetch(`/api/apps/${id}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  const reader = res.body.getReader();
+  const dec    = new TextDecoder();
+  const pump   = () => reader.read().then(({ done, value }) => {
+    if (done) { loadInstalledApps(); return; }
+    dec.decode(value).split('\n').filter(l => l.startsWith('data:')).forEach(line => {
+      try { const d = JSON.parse(line.slice(5)); if (d.log) logEl.textContent += d.log + '\n'; } catch { /* ignore */ }
+    });
+    return pump();
+  });
+  pump();
+}
+
+// ── Processes ─────────────────────────────────────────────────────────────────
+
+let logWs = null;
+
+async function loadProcessesPanel() {
+  await refreshProcessList();
+}
+
+async function refreshProcessList() {
+  qs('#proc-error').textContent = '';
+  const res  = await api('GET', '/api/processes');
+  const data = await res.json();
+  if (!res.ok) { qs('#proc-error').textContent = data.error; return; }
+  renderProcesses(Array.isArray(data) ? data : []);
+}
+
+function renderProcesses(procs) {
+  const tbody = qs('#proc-tbody');
+  tbody.innerHTML = '';
+  if (!procs.length) {
+    tbody.innerHTML = '<tr><td colspan="7" style="color:var(--muted)">No PM2 processes running.</td></tr>';
+    return;
+  }
+  procs.forEach(p => {
+    const dotClass = p.status === 'online' ? 'dot-online'
+                   : p.status === 'stopped' ? 'dot-stopped'
+                   : p.status === 'errored' ? 'dot-errored' : 'dot-unknown';
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${p.id}</td>
+      <td>${p.name}</td>
+      <td><span class="proc-status"><span class="proc-dot ${dotClass}"></span>${p.status}</span></td>
+      <td>${p.cpu}%</td>
+      <td>${p.memMb} MB</td>
+      <td>${p.restarts}</td>
+      <td>
+        <button class="action-btn" onclick="procAction('restart','${p.name}')">Restart</button>
+        <button class="action-btn" onclick="procAction('stop','${p.name}')">Stop</button>
+        <button class="action-btn" onclick="openProcLogs('${p.name}')">Logs</button>
+        <button class="action-btn danger" onclick="procAction('delete','${p.name}')">Delete</button>
+      </td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+async function procAction(action, name) {
+  const methodMap = { restart: 'POST', stop: 'POST', delete: 'DELETE' };
+  const pathMap   = { restart: `/api/processes/${name}/restart`, stop: `/api/processes/${name}/stop`, delete: `/api/processes/${name}` };
+  await api(methodMap[action], pathMap[action]);
+  await refreshProcessList();
+}
+
+function openProcLogs(name) {
+  qs('#proc-log-name').textContent = name;
+  qs('#proc-log-output').textContent = '';
+  show(qs('#proc-log-panel'));
+
+  if (logWs) { try { logWs.close(); } catch { /* ignore */ } }
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  logWs = new WebSocket(`${proto}://${location.host}/ws/logs?token=${encodeURIComponent(accessToken)}&name=${encodeURIComponent(name)}`);
+  logWs.onmessage = e => {
+    try {
+      const d = JSON.parse(e.data);
+      if (d.line) {
+        const pre = qs('#proc-log-output');
+        pre.textContent += d.line;
+        pre.scrollTop = pre.scrollHeight;
+      }
+    } catch { /* ignore */ }
+  };
+}
+
+qs('#proc-log-close-btn').addEventListener('click', () => {
+  hide(qs('#proc-log-panel'));
+  if (logWs) { logWs.close(); logWs = null; }
+});
+
+qs('#proc-refresh-btn').addEventListener('click', refreshProcessList);
+qs('#proc-save-btn').addEventListener('click', async () => {
+  await api('POST', '/api/processes/save');
+  qs('#proc-error').textContent = 'Process list saved.';
+});
+
+// ── Git Deploy ────────────────────────────────────────────────────────────────
+
+let activeHookId = null;
+
+async function loadDeployPanel() {
+  qs('#deploy-error').textContent = '';
+  const res  = await api('GET', '/api/deploy');
+  const data = await res.json();
+  if (!res.ok) { qs('#deploy-error').textContent = data.error; return; }
+  renderDeployHooks(data);
+}
+
+function renderDeployHooks(hooks) {
+  const tbody = qs('#deploy-tbody');
+  tbody.innerHTML = '';
+  if (!hooks.length) {
+    tbody.innerHTML = '<tr><td colspan="6" style="color:var(--muted)">No deploy hooks yet.</td></tr>';
+    return;
+  }
+  hooks.forEach(h => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${h.name}</td>
+      <td style="font-family:monospace;font-size:12px">${h.deploy_dir}</td>
+      <td>${h.branch}</td>
+      <td style="font-family:monospace;font-size:12px">${h.build_cmd || '—'}</td>
+      <td>${h.pm2_name || '—'}</td>
+      <td>
+        <button class="action-btn" onclick="showDeployHistory(${h.id},'${h.name}')">History</button>
+        <button class="action-btn danger" onclick="deleteDeployHook(${h.id})">Delete</button>
+      </td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+qs('#deploy-add-btn').addEventListener('click', () => { show(qs('#deploy-form')); qs('#deploy-name').focus(); });
+qs('#deploy-cancel-btn').addEventListener('click', () => hide(qs('#deploy-form')));
+
+qs('#deploy-submit-btn').addEventListener('click', async () => {
+  const name      = qs('#deploy-name').value.trim();
+  const deployDir = qs('#deploy-dir').value.trim();
+  const branch    = qs('#deploy-branch').value.trim() || 'main';
+  const buildCmd  = qs('#deploy-build-cmd').value.trim() || undefined;
+  const pm2Name   = qs('#deploy-pm2-name').value.trim() || undefined;
+  qs('#deploy-form-error').textContent = '';
+  if (!name || !deployDir) { qs('#deploy-form-error').textContent = 'Name and directory required'; return; }
+
+  const res  = await api('POST', '/api/deploy', { name, deployDir, branch, buildCmd, pm2Name });
+  const data = await res.json();
+  if (!res.ok) { qs('#deploy-form-error').textContent = data.error; return; }
+  hide(qs('#deploy-form'));
+  ['#deploy-name','#deploy-dir','#deploy-build-cmd','#deploy-pm2-name'].forEach(s => { qs(s).value = ''; });
+  qs('#deploy-branch').value = 'main';
+  loadDeployPanel();
+});
+
+async function deleteDeployHook(id) {
+  if (!confirm('Delete this deploy hook?')) return;
+  const res = await api('DELETE', `/api/deploy/${id}`);
+  if (res.ok) loadDeployPanel();
+  else { const d = await res.json(); qs('#deploy-error').textContent = d.error; }
+}
+
+async function showDeployHistory(hookId, name) {
+  activeHookId = hookId;
+  qs('#deploy-history-name').textContent = name;
+  qs('#deploy-webhook-url').textContent =
+    `Webhook URL: ${location.origin}/api/deploy/webhook/${hookId}`;
+  show(qs('#deploy-history-panel'));
+
+  const res  = await api('GET', `/api/deploy/${hookId}/history`);
+  const data = await res.json();
+  if (!res.ok) { qs('#deploy-error').textContent = data.error; return; }
+  const tbody = qs('#deploy-history-tbody');
+  tbody.innerHTML = '';
+  if (!data.length) {
+    tbody.innerHTML = '<tr><td colspan="5" style="color:var(--muted)">No deploys yet.</td></tr>';
+    return;
+  }
+  data.forEach(d => {
+    const statusClass = d.status === 'success' ? 'badge-active' : d.status === 'failed' ? 'badge-failed' : 'badge-pending';
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td><span class="badge ${statusClass}">${d.status}</span></td>
+      <td style="font-family:monospace">${d.commit_sha?.slice(0,8) || '—'}</td>
+      <td>${d.commit_msg?.slice(0,60) || '—'}</td>
+      <td>${d.started_at?.slice(0,16) || '—'}</td>
+      <td><details><summary style="cursor:pointer;color:var(--muted)">view</summary><pre style="font-size:11px;white-space:pre-wrap">${d.output || ''}</pre></details></td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+qs('#deploy-history-close-btn').addEventListener('click', () => {
+  hide(qs('#deploy-history-panel'));
+  activeHookId = null;
+});
+
 // ── Boot ──────────────────────────────────────────────────────────────────────
 
 (async function boot() {
