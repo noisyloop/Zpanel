@@ -25,7 +25,11 @@ app.use('/api/files',  require('./modules/files/routes'));
 app.use('/api/domains', require('./modules/domains/routes'));
 app.use('/api/domains/:domainId/dns', require('./modules/dns/routes'));
 app.use('/api/domains/:domainId/ssl', require('./modules/ssl/routes'));
-app.use('/api/ssl', require('./modules/ssl/routes'));
+app.use('/api/ssl',       require('./modules/ssl/routes'));
+app.use('/api/email',     require('./modules/email/routes'));
+app.use('/api/databases', require('./modules/databases/routes'));
+app.use('/api/ftp',       require('./modules/ftp/routes'));
+app.use('/api/cron',      require('./modules/cron/routes'));
 
 // SPA fallback — serve index.html for all non-API routes
 app.get('*', (req, res) => {

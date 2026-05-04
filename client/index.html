@@ -32,6 +32,11 @@
           <li><button class="nav-btn" data-panel="domains">Domains</button></li>
           <li><button class="nav-btn" data-panel="dns">DNS Manager</button></li>
           <li><button class="nav-btn" data-panel="ssl">SSL Certs</button></li>
+          <li class="nav-separator"></li>
+          <li><button class="nav-btn" data-panel="email">Email</button></li>
+          <li><button class="nav-btn" data-panel="databases">Databases</button></li>
+          <li><button class="nav-btn" data-panel="ftp">FTP</button></li>
+          <li><button class="nav-btn" data-panel="cron">Cron Jobs</button></li>
         </ul>
         <div class="sidebar-footer">
           <span id="nav-username"></span>
@@ -188,6 +193,167 @@
           </table>
           <p id="ssl-message" class="info-msg"></p>
           <p id="ssl-error" class="error"></p>
+        </section>
+
+        <!-- Email panel -->
+        <section id="panel-email" class="panel hidden">
+          <h2>Email</h2>
+          <div class="panel-tabs">
+            <button class="tab-btn active" data-tab="mailboxes">Mailboxes</button>
+            <button class="tab-btn" data-tab="aliases">Aliases</button>
+            <button class="tab-btn" data-tab="dkim">DKIM / Config</button>
+          </div>
+
+          <!-- Mailboxes tab -->
+          <div id="email-tab-mailboxes" class="tab-panel">
+            <div class="panel-toolbar">
+              <button id="mb-add-btn" class="btn-primary">+ New Mailbox</button>
+            </div>
+            <table class="data-table">
+              <thead><tr><th>Address</th><th>Domain</th><th>Quota</th><th>Created</th><th>Actions</th></tr></thead>
+              <tbody id="mb-tbody"></tbody>
+            </table>
+            <div id="mb-form" class="inline-form hidden">
+              <h3>New Mailbox</h3>
+              <select id="mb-domain-select"><option value="">Select domain…</option></select>
+              <input id="mb-local" type="text" placeholder="username (before @)" />
+              <input id="mb-password" type="password" placeholder="Mailbox password" />
+              <input id="mb-quota" type="number" placeholder="Quota MB (500)" value="500" />
+              <div class="form-row">
+                <button id="mb-submit-btn" class="btn-primary">Create</button>
+                <button id="mb-cancel-btn" class="btn-ghost">Cancel</button>
+              </div>
+              <p id="mb-form-error" class="error"></p>
+            </div>
+          </div>
+
+          <!-- Aliases tab -->
+          <div id="email-tab-aliases" class="tab-panel hidden">
+            <div class="panel-toolbar">
+              <select id="alias-domain-select"><option value="">Select domain…</option></select>
+              <button id="alias-add-btn" class="btn-primary">+ New Alias</button>
+            </div>
+            <table class="data-table">
+              <thead><tr><th>Source</th><th>Destination</th><th>Actions</th></tr></thead>
+              <tbody id="alias-tbody"></tbody>
+            </table>
+            <div id="alias-form" class="inline-form hidden">
+              <h3>New Alias</h3>
+              <input id="alias-source" type="text" placeholder="from@domain.com" />
+              <input id="alias-dest"   type="text" placeholder="to@example.com" />
+              <div class="form-row">
+                <button id="alias-submit-btn" class="btn-primary">Create</button>
+                <button id="alias-cancel-btn" class="btn-ghost">Cancel</button>
+              </div>
+              <p id="alias-form-error" class="error"></p>
+            </div>
+          </div>
+
+          <!-- DKIM / Config tab -->
+          <div id="email-tab-dkim" class="tab-panel hidden">
+            <div class="panel-toolbar">
+              <select id="dkim-domain-select"><option value="">Select domain…</option></select>
+              <button id="dkim-gen-btn" class="btn-primary">Generate DKIM Key</button>
+              <button id="email-config-btn" class="btn-ghost">Show Config</button>
+            </div>
+            <pre id="dkim-output" class="zone-pre" style="display:none"></pre>
+            <p id="dkim-error" class="error"></p>
+          </div>
+
+          <p id="email-error" class="error"></p>
+        </section>
+
+        <!-- Databases panel -->
+        <section id="panel-databases" class="panel hidden">
+          <h2>Databases</h2>
+          <div class="panel-toolbar">
+            <button id="db-add-btn" class="btn-primary">+ New Database</button>
+          </div>
+          <table class="data-table">
+            <thead><tr><th>Database</th><th>User</th><th>Host</th><th>Created</th><th>Actions</th></tr></thead>
+            <tbody id="db-tbody"></tbody>
+          </table>
+          <div id="db-form" class="inline-form hidden">
+            <h3>New Database</h3>
+            <input id="db-name-input" type="text" placeholder="database_name" />
+            <input id="db-user-input" type="text" placeholder="db_username" />
+            <input id="db-pass-input" type="password" placeholder="Password" />
+            <div class="form-row">
+              <button id="db-submit-btn" class="btn-primary">Create</button>
+              <button id="db-cancel-btn" class="btn-ghost">Cancel</button>
+            </div>
+            <p id="db-form-error" class="error"></p>
+          </div>
+
+          <!-- Query runner (shown when a DB is selected) -->
+          <div id="db-query-panel" class="inline-form hidden" style="max-width:100%">
+            <h3>Query Runner — <span id="db-query-name"></span></h3>
+            <p style="color:var(--muted);font-size:12px;margin-bottom:10px">SELECT, SHOW, DESCRIBE, EXPLAIN only</p>
+            <textarea id="db-query-input" rows="4" placeholder="SELECT * FROM table LIMIT 10"></textarea>
+            <div class="form-row">
+              <button id="db-query-run-btn" class="btn-primary">Run</button>
+              <button id="db-query-close-btn" class="btn-ghost">Close</button>
+            </div>
+            <div id="db-query-result" style="overflow-x:auto;margin-top:12px"></div>
+          </div>
+          <p id="db-error" class="error"></p>
+        </section>
+
+        <!-- FTP panel -->
+        <section id="panel-ftp" class="panel hidden">
+          <h2>FTP Accounts</h2>
+          <div class="panel-toolbar">
+            <button id="ftp-add-btn" class="btn-primary">+ New FTP Account</button>
+            <button id="ftp-config-btn" class="btn-ghost">Show vsftpd Config</button>
+          </div>
+          <table class="data-table">
+            <thead><tr><th>FTP User</th><th>Chroot Directory</th><th>Created</th><th>Actions</th></tr></thead>
+            <tbody id="ftp-tbody"></tbody>
+          </table>
+          <div id="ftp-form" class="inline-form hidden">
+            <h3>New FTP Account</h3>
+            <input id="ftp-user-input"   type="text"     placeholder="ftpusername" />
+            <input id="ftp-pass-input"   type="password" placeholder="Password" />
+            <input id="ftp-chroot-input" type="text"     placeholder="/var/www/username/domain" />
+            <div class="form-row">
+              <button id="ftp-submit-btn" class="btn-primary">Create</button>
+              <button id="ftp-cancel-btn" class="btn-ghost">Cancel</button>
+            </div>
+            <p id="ftp-form-error" class="error"></p>
+          </div>
+          <pre id="ftp-config-output" class="zone-pre" style="display:none"></pre>
+          <p id="ftp-error" class="error"></p>
+        </section>
+
+        <!-- Cron Jobs panel -->
+        <section id="panel-cron" class="panel hidden">
+          <h2>Cron Jobs</h2>
+          <div class="panel-toolbar">
+            <button id="cron-add-btn" class="btn-primary">+ New Job</button>
+          </div>
+          <table class="data-table">
+            <thead><tr><th>Expression</th><th>Command</th><th>System User</th><th>Actions</th></tr></thead>
+            <tbody id="cron-tbody"></tbody>
+          </table>
+          <div id="cron-form" class="inline-form hidden">
+            <h3>New Cron Job</h3>
+            <input id="cron-sysuser" type="text" placeholder="System user (e.g. www-data)" />
+            <div class="cron-builder">
+              <label>Minute <input id="cron-min"   type="text" value="*" style="width:60px" /></label>
+              <label>Hour   <input id="cron-hour"  type="text" value="*" style="width:60px" /></label>
+              <label>Day    <input id="cron-dom"   type="text" value="*" style="width:60px" /></label>
+              <label>Month  <input id="cron-month" type="text" value="*" style="width:60px" /></label>
+              <label>Weekday<input id="cron-dow"   type="text" value="*" style="width:60px" /></label>
+            </div>
+            <p id="cron-expr-preview" class="cron-preview"></p>
+            <input id="cron-cmd" type="text" placeholder="/path/to/script.sh" />
+            <div class="form-row">
+              <button id="cron-submit-btn" class="btn-primary">Create</button>
+              <button id="cron-cancel-btn" class="btn-ghost">Cancel</button>
+            </div>
+            <p id="cron-form-error" class="error"></p>
+          </div>
+          <p id="cron-error" class="error"></p>
         </section>
       </main>
     </div>
