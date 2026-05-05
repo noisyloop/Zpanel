@@ -56,6 +56,18 @@ const COMMAND_WHITELIST = {
   git:         { bin: 'git',        argPatterns: ['-C', 'pull', 'fetch', 'checkout', 'rev-parse', 'log',
                                                   '--oneline', '-1', 'HEAD', 'origin',
                                                   /^\/[a-zA-Z0-9/_.-]+$/, /^[a-zA-Z0-9_./\-]+$/] },
+
+  // Phase 6 — Backups
+  mysqldump:   { bin: 'mysqldump',  argPatterns: [
+                   /^--host=[a-zA-Z0-9._-]+$/, /^--port=\d+$/,
+                   /^--user=[a-zA-Z0-9_-]+$/, /^--password=.*$/,
+                   '--no-tablespaces', '--single-transaction', '--quick', '--routines',
+                   '--result-file', /^\/[a-zA-Z0-9/_.-]+$/, /^[a-zA-Z0-9_]{1,64}$/ ] },
+  mysql:       { bin: 'mysql',      argPatterns: [
+                   /^--host=[a-zA-Z0-9._-]+$/, /^--port=\d+$/,
+                   /^--user=[a-zA-Z0-9_-]+$/, /^--password=.*/,
+                   /^--database=[a-zA-Z0-9_]{1,64}$/, '-e',
+                   /^[a-zA-Z0-9 _*()',";=<>!.-]+$/ ] },
 };
 
 const LOG_DIR = path.join(__dirname, '../logs');

@@ -40,6 +40,13 @@ A cPanel-inspired web hosting control panel built as a **learning project** usin
 | Linux user provisioning + disk quotas | `server/modules/isolation/` |
 | Git deploy webhooks + HMAC timing-safe verification | `server/modules/deploy/` |
 | WordPress / Ghost one-click installers | `server/modules/apps/` |
+| Long-lived API keys (hash-only storage) | `server/auth/apiKeys.js` |
+| Admin user management + resource ownership | `server/modules/users/`, `server/middleware/` |
+| Paginated audit log with filters | `server/modules/audit/` |
+| TOTP 2FA — pure HMAC-SHA1, RFC 6238, no library | `server/auth/totp.js` |
+| Backup codes (SHA-256 hash, one-time use) | `server/auth/totp.js` |
+| File + MySQL database backups with retention | `server/modules/backups/` |
+| Email notifications via nodemailer (SMTP) | `server/modules/notifications/` |
 
 ---
 
@@ -579,7 +586,8 @@ All tests run in-process (no real shell commands, no MySQL, no nginx required).
 | 2 — Domains / DNS / SSL | ✅ Complete | Nginx, BIND9, certbot |
 | 3 — Email / Databases / FTP / Cron | ✅ Complete | Postfix, Dovecot, MySQL, vsftpd |
 | 4 — App Deploy / PM2 / Isolation | ✅ Complete | WordPress, Ghost, PM2, Linux users, git webhooks |
-| 5 — Polish / Multi-tenancy | 🔲 Planned | Per-user permissions, billing hooks, audit log UI |
+| 5 — Polish / Multi-tenancy | ✅ Complete | User management, API keys, audit log UI, ownership middleware |
+| 6 — 2FA / Backups / Notifications | ✅ Complete | TOTP 2FA (pure HMAC-SHA1), file + DB backups, email alerts |
 
 ---
 

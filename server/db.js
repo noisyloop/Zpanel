@@ -186,6 +186,55 @@ db.exec(`
     last_used   TEXT,
     created_at  TEXT    NOT NULL DEFAULT (datetime('now'))
   );
+
+  -- Phase 6: TOTP backup codes
+  CREATE TABLE IF NOT EXISTS totp_backup_codes (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    code_hash   TEXT    NOT NULL,
+    used_at     TEXT,
+    created_at  TEXT    NOT NULL DEFAULT (datetime('now'))
+  );
+
+  -- Phase 6: Short-lived MFA challenge tokens (used between login step 1 and step 2)
+  CREATE TABLE IF NOT EXISTS mfa_tokens (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    token       TEXT    NOT NULL UNIQUE,
+    expires_at  TEXT    NOT NULL,
+    created_at  TEXT    NOT NULL DEFAULT (datetime('now'))
+  );
+
+  -- Phase 6: File and DB backups
+  CREATE TABLE IF NOT EXISTS backups (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    type        TEXT    NOT NULL CHECK(type IN ('files','database')),
+    label       TEXT    NOT NULL,
+    path        TEXT    NOT NULL,
+    size_bytes  INTEGER,
+    status      TEXT    NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','ok','failed')),
+    created_at  TEXT    NOT NULL DEFAULT (datetime('now'))
+  );
+
+  -- Phase 6: Per-user notification preferences
+  CREATE TABLE IF NOT EXISTS notification_prefs (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id             INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+    email               TEXT,
+    notify_ssl_expiry   INTEGER NOT NULL DEFAULT 1,
+    notify_deploy_fail  INTEGER NOT NULL DEFAULT 1,
+    notify_quota_warn   INTEGER NOT NULL DEFAULT 1,
+    updated_at          TEXT    NOT NULL DEFAULT (datetime('now'))
+  );
 `);
+
+// ── Phase 6 migrations: add TOTP columns to users table ──────────────────────
+// SQLite does not support "ADD COLUMN IF NOT EXISTS" so we check first.
+(function migrateUsers() {
+  const cols = db.pragma('table_info(users)').map(c => c.name);
+  if (!cols.includes('totp_secret'))  db.exec("ALTER TABLE users ADD COLUMN totp_secret  TEXT");
+  if (!cols.includes('totp_enabled')) db.exec("ALTER TABLE users ADD COLUMN totp_enabled INTEGER NOT NULL DEFAULT 0");
+})();
 
 module.exports = db;

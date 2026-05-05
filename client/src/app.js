@@ -65,6 +65,20 @@ function logout() {
   hide(qs('#dashboard'));
 }
 
+let pendingMfaToken = null;
+
+function completeLogin(data) {
+  accessToken = data.accessToken;
+  localStorage.setItem('zpanel_token', accessToken);
+  currentUser = data.user;
+  qs('#nav-username').textContent = data.user.username;
+  // Reset MFA UI
+  show(qs('#login-step1'));
+  hide(qs('#login-step2'));
+  pendingMfaToken = null;
+  enterDashboard();
+}
+
 qs('#login-form').addEventListener('submit', async e => {
   e.preventDefault();
   const username = qs('#login-username').value.trim();
@@ -79,18 +93,49 @@ qs('#login-form').addEventListener('submit', async e => {
       body:    JSON.stringify({ username, password }),
     });
     const data = await res.json();
-    if (!res.ok) {
-      errEl.textContent = data.error || 'Login failed';
+    if (!res.ok) { errEl.textContent = data.error || 'Login failed'; return; }
+
+    if (data.mfa_required) {
+      // Step 2: show TOTP challenge
+      pendingMfaToken = data.mfa_token;
+      hide(qs('#login-step1'));
+      show(qs('#login-step2'));
+      qs('#mfa-code-input').focus();
       return;
     }
-    accessToken = data.accessToken;
-    localStorage.setItem('zpanel_token', accessToken);
-    currentUser = data.user;
-    qs('#nav-username').textContent = data.user.username;
-    enterDashboard();
+    completeLogin(data);
   } catch {
     errEl.textContent = 'Network error';
   }
+});
+
+qs('#mfa-submit-btn').addEventListener('click', async () => {
+  const code        = qs('#mfa-code-input').value.trim();
+  const backup_code = qs('#mfa-backup-input').value.trim() || undefined;
+  qs('#mfa-error').textContent = '';
+  if (!code && !backup_code) { qs('#mfa-error').textContent = 'Enter a code'; return; }
+
+  try {
+    const res  = await fetch('/api/auth/totp/validate', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ mfa_token: pendingMfaToken, code: code || undefined, backup_code }),
+    });
+    const data = await res.json();
+    if (!res.ok) { qs('#mfa-error').textContent = data.error; return; }
+    completeLogin(data);
+  } catch {
+    qs('#mfa-error').textContent = 'Network error';
+  }
+});
+
+qs('#mfa-back-btn').addEventListener('click', () => {
+  pendingMfaToken = null;
+  qs('#mfa-code-input').value   = '';
+  qs('#mfa-backup-input').value = '';
+  qs('#mfa-error').textContent  = '';
+  show(qs('#login-step1'));
+  hide(qs('#login-step2'));
 });
 
 qs('#logout-btn').addEventListener('click', logout);
@@ -136,9 +181,11 @@ function switchPanel(name) {
   if (name === 'apps')      loadAppsPanel();
   if (name === 'processes') loadProcessesPanel();
   if (name === 'deploy')    loadDeployPanel();
-  if (name === 'profile')   loadProfilePanel();
-  if (name === 'users')     loadUsersPanel();
-  if (name === 'audit')     loadAuditPanel();
+  if (name === 'profile')       loadProfilePanel();
+  if (name === 'users')         loadUsersPanel();
+  if (name === 'audit')         loadAuditPanel();
+  if (name === 'backups')       loadBackupsPanel();
+  if (name === 'notifications') loadNotificationsPanel();
 }
 
 // ── WebSocket stats ───────────────────────────────────────────────────────────
@@ -1602,6 +1649,266 @@ async function fetchAuditPage() {
 qs('#audit-search-btn').addEventListener('click', () => { auditOffset = 0; fetchAuditPage(); });
 qs('#audit-prev-btn').addEventListener('click',  () => { auditOffset = Math.max(0, auditOffset - AUDIT_LIMIT); fetchAuditPage(); });
 qs('#audit-next-btn').addEventListener('click',  () => { auditOffset += AUDIT_LIMIT; fetchAuditPage(); });
+
+// ── TOTP 2FA (Profile panel) ──────────────────────────────────────────────────
+
+async function loadTotpStatus() {
+  const res  = await api('GET', '/api/auth/totp/status');
+  if (!res.ok) return;
+  const data = await res.json();
+
+  hide(qs('#totp-disabled-view'));
+  hide(qs('#totp-setup-view'));
+  hide(qs('#totp-backup-view'));
+  hide(qs('#totp-enabled-view'));
+
+  if (data.enabled) {
+    qs('#totp-backup-remaining').textContent = `${data.backup_codes_remaining} backup code(s) remaining`;
+    show(qs('#totp-enabled-view'));
+    hide(qs('#totp-action-confirm'));
+  } else {
+    show(qs('#totp-disabled-view'));
+  }
+}
+
+qs('#totp-setup-btn').addEventListener('click', async () => {
+  const res  = await api('POST', '/api/auth/totp/setup');
+  const data = await res.json();
+  if (!res.ok) { alert(data.error); return; }
+
+  qs('#totp-qr-img').src          = data.qr;
+  qs('#totp-secret-text').textContent = `Manual key: ${data.secret}`;
+  qs('#totp-confirm-code').value  = '';
+  qs('#totp-setup-error').textContent = '';
+  hide(qs('#totp-disabled-view'));
+  show(qs('#totp-setup-view'));
+  qs('#totp-confirm-code').focus();
+});
+
+qs('#totp-setup-cancel-btn').addEventListener('click', () => {
+  hide(qs('#totp-setup-view'));
+  show(qs('#totp-disabled-view'));
+});
+
+qs('#totp-confirm-btn').addEventListener('click', async () => {
+  const code = qs('#totp-confirm-code').value.trim();
+  qs('#totp-setup-error').textContent = '';
+  if (!code) { qs('#totp-setup-error').textContent = 'Enter the 6-digit code'; return; }
+
+  const res  = await api('POST', '/api/auth/totp/confirm', { code });
+  const data = await res.json();
+  if (!res.ok) { qs('#totp-setup-error').textContent = data.error; return; }
+
+  // Show backup codes once
+  const codesEl = qs('#totp-backup-codes');
+  codesEl.innerHTML = data.backup_codes.map(c => `<div>${c}</div>`).join('');
+  hide(qs('#totp-setup-view'));
+  show(qs('#totp-backup-view'));
+});
+
+qs('#totp-backup-done-btn').addEventListener('click', () => loadTotpStatus());
+
+// Disable / regenerate — both require current TOTP code
+let totpPendingAction = null;
+
+qs('#totp-disable-btn').addEventListener('click', () => {
+  totpPendingAction = 'disable';
+  qs('#totp-action-code').value = '';
+  qs('#totp-enabled-error').textContent = '';
+  show(qs('#totp-action-confirm'));
+  qs('#totp-action-code').focus();
+});
+
+qs('#totp-regen-btn').addEventListener('click', () => {
+  totpPendingAction = 'regen';
+  qs('#totp-action-code').value = '';
+  qs('#totp-enabled-error').textContent = '';
+  show(qs('#totp-action-confirm'));
+  qs('#totp-action-code').focus();
+});
+
+qs('#totp-action-cancel-btn').addEventListener('click', () => {
+  hide(qs('#totp-action-confirm'));
+  totpPendingAction = null;
+});
+
+qs('#totp-action-submit-btn').addEventListener('click', async () => {
+  const code = qs('#totp-action-code').value.trim();
+  qs('#totp-enabled-error').textContent = '';
+
+  if (totpPendingAction === 'disable') {
+    const res = await api('DELETE', '/api/auth/totp', { code });
+    const d   = await res.json();
+    if (!res.ok) { qs('#totp-enabled-error').textContent = d.error; return; }
+    loadTotpStatus();
+  } else if (totpPendingAction === 'regen') {
+    const res  = await api('POST', '/api/auth/totp/backup', { code });
+    const data = await res.json();
+    if (!res.ok) { qs('#totp-enabled-error').textContent = data.error; return; }
+    const codesEl = qs('#totp-backup-codes');
+    codesEl.innerHTML = data.backup_codes.map(c => `<div>${c}</div>`).join('');
+    hide(qs('#totp-enabled-view'));
+    hide(qs('#totp-action-confirm'));
+    show(qs('#totp-backup-view'));
+  }
+  totpPendingAction = null;
+});
+
+// Extend loadProfilePanel to also load TOTP status
+const _origLoadProfilePanel = loadProfilePanel;
+async function loadProfilePanel() {
+  await _origLoadProfilePanel();
+  loadTotpStatus();
+}
+
+// ── Backups panel ─────────────────────────────────────────────────────────────
+
+function initBackupTabs() {
+  document.querySelectorAll('[data-backup-tab]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('[data-backup-tab]').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      document.querySelectorAll('#backup-tab-list,#backup-tab-files,#backup-tab-database').forEach(p => hide(p));
+      show(qs(`#backup-tab-${btn.dataset.backupTab}`));
+    });
+  });
+}
+initBackupTabs();
+
+async function loadBackupsPanel() {
+  qs('#backups-error').textContent = '';
+  // Reset to list tab
+  document.querySelectorAll('[data-backup-tab]').forEach((b, i) => {
+    b.classList.toggle('active', i === 0);
+  });
+  document.querySelectorAll('#backup-tab-list,#backup-tab-files,#backup-tab-database').forEach((p, i) => {
+    i === 0 ? show(p) : hide(p);
+  });
+  fetchBackupList();
+}
+
+async function fetchBackupList() {
+  const res  = await api('GET', '/api/backups');
+  const data = await res.json();
+  if (!res.ok) { qs('#backups-error').textContent = data.error; return; }
+
+  const tbody = qs('#backups-tbody');
+  tbody.innerHTML = '';
+  if (!data.length) {
+    tbody.innerHTML = '<tr><td colspan="6" style="color:var(--muted)">No backups yet.</td></tr>';
+    return;
+  }
+  data.forEach(b => {
+    const sizeMb = b.size_bytes ? (b.size_bytes / 1024 / 1024).toFixed(1) + ' MB' : '—';
+    const statusClass = b.status === 'ok' ? 'badge-active' : b.status === 'failed' ? 'badge-failed' : 'badge-pending';
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td><span class="badge ${b.type === 'files' ? 'badge-pending' : 'badge-active'}">${b.type}</span></td>
+      <td>${b.label}</td>
+      <td>${sizeMb}</td>
+      <td><span class="badge ${statusClass}">${b.status}</span></td>
+      <td>${b.created_at?.slice(0, 16) || '—'}</td>
+      <td>
+        ${b.status === 'ok' ? `<a class="action-btn" href="/api/backups/${b.id}/download" target="_blank">Download</a>` : ''}
+        ${b.status === 'ok' && b.type === 'files' ? `<button class="action-btn" onclick="restoreBackup(${b.id})">Restore</button>` : ''}
+        <button class="action-btn danger" onclick="deleteBackup(${b.id})">Delete</button>
+      </td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+qs('#backup-refresh-btn').addEventListener('click', fetchBackupList);
+
+qs('#backup-files-btn').addEventListener('click', async () => {
+  const sourceDir = qs('#backup-source-dir').value.trim();
+  const label     = qs('#backup-files-label').value.trim();
+  qs('#backup-files-error').textContent = '';
+  qs('#backup-files-msg').textContent   = '';
+  if (!sourceDir) { qs('#backup-files-error').textContent = 'Source directory required'; return; }
+
+  qs('#backup-files-btn').disabled = true;
+  qs('#backup-files-msg').textContent = 'Backup running…';
+  const res  = await api('POST', '/api/backups/files', { sourceDir, label });
+  const data = await res.json();
+  qs('#backup-files-btn').disabled = false;
+
+  if (!res.ok) { qs('#backup-files-error').textContent = data.error; qs('#backup-files-msg').textContent = ''; return; }
+  qs('#backup-files-msg').textContent = 'Backup created successfully.';
+  fetchBackupList();
+});
+
+qs('#backup-db-btn').addEventListener('click', async () => {
+  const dbName = qs('#backup-db-name').value.trim();
+  const label  = qs('#backup-db-label').value.trim();
+  qs('#backup-db-error').textContent = '';
+  qs('#backup-db-msg').textContent   = '';
+  if (!dbName) { qs('#backup-db-error').textContent = 'Database name required'; return; }
+
+  qs('#backup-db-btn').disabled = true;
+  qs('#backup-db-msg').textContent = 'Dump running…';
+  const res  = await api('POST', '/api/backups/database', { dbName, label });
+  const data = await res.json();
+  qs('#backup-db-btn').disabled = false;
+
+  if (!res.ok) { qs('#backup-db-error').textContent = data.error; qs('#backup-db-msg').textContent = ''; return; }
+  qs('#backup-db-msg').textContent = 'Database dump created successfully.';
+  fetchBackupList();
+});
+
+async function restoreBackup(id) {
+  const restoreDir = prompt('Restore to directory:');
+  if (!restoreDir) return;
+  const res  = await api('POST', `/api/backups/${id}/restore`, { restoreDir });
+  const data = await res.json();
+  if (!res.ok) { qs('#backups-error').textContent = data.error; return; }
+  qs('#backups-error').textContent = '';
+  alert(`Restored to ${data.restored_to}`);
+}
+
+async function deleteBackup(id) {
+  if (!confirm('Delete this backup? This cannot be undone.')) return;
+  const res = await api('DELETE', `/api/backups/${id}`);
+  if (res.ok) fetchBackupList();
+  else { const d = await res.json(); qs('#backups-error').textContent = d.error; }
+}
+
+// ── Notifications panel ───────────────────────────────────────────────────────
+
+async function loadNotificationsPanel() {
+  qs('#notif-error').textContent = '';
+  qs('#notif-msg').textContent   = '';
+  const res  = await api('GET', '/api/notifications/prefs');
+  const data = await res.json();
+  if (!res.ok) { qs('#notif-error').textContent = data.error; return; }
+
+  qs('#notif-email').value   = data.email || '';
+  qs('#notif-ssl').checked   = !!data.notify_ssl_expiry;
+  qs('#notif-deploy').checked = !!data.notify_deploy_fail;
+  qs('#notif-quota').checked  = !!data.notify_quota_warn;
+}
+
+qs('#notif-save-btn').addEventListener('click', async () => {
+  qs('#notif-error').textContent = '';
+  qs('#notif-msg').textContent   = '';
+  const res  = await api('PUT', '/api/notifications/prefs', {
+    email:              qs('#notif-email').value.trim() || null,
+    notify_ssl_expiry:  qs('#notif-ssl').checked   ? 1 : 0,
+    notify_deploy_fail: qs('#notif-deploy').checked ? 1 : 0,
+    notify_quota_warn:  qs('#notif-quota').checked  ? 1 : 0,
+  });
+  const data = await res.json();
+  if (!res.ok) { qs('#notif-error').textContent = data.error; return; }
+  qs('#notif-msg').textContent = 'Preferences saved.';
+});
+
+qs('#notif-test-btn').addEventListener('click', async () => {
+  qs('#notif-error').textContent = '';
+  qs('#notif-msg').textContent   = '';
+  const res  = await api('POST', '/api/notifications/test');
+  const data = await res.json();
+  if (!res.ok) { qs('#notif-error').textContent = data.error; return; }
+  qs('#notif-msg').textContent = 'Test notification sent (check audit log if SMTP is not configured).';
+});
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
 
