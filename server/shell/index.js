@@ -36,7 +36,10 @@ const COMMAND_WHITELIST = {
 
   // Phase 4 — App installer / PM2 / isolation / git deploy
   wget:        { bin: 'wget',       argPatterns: ['-q', '-O', /^\/[a-zA-Z0-9/_.-]+$/, /^https?:\/\/[a-zA-Z0-9._/%-]+$/] },
-  tar:         { bin: 'tar',        argPatterns: [/^-?[xzf]+$/, /^--strip-components=\d+$/, /^-C$/, /^\/[a-zA-Z0-9/_.-]+$/] },
+  tar:         { bin: 'tar',        argPatterns: [
+                   /^-?[xzcf]+$/, /^--strip-components=\d+$/, /^-C$/,
+                   /^\/[a-zA-Z0-9/_.-]+$/,
+                   '--no-same-owner', '--no-overwrite-dir' ] },
   unzip:       { bin: 'unzip',      argPatterns: ['-q', '-o', /^\/[a-zA-Z0-9/_.-]+$/, /^-d$/] },
   chmod:       { bin: 'chmod',      argPatterns: ['-R', /^[0-7]{3,4}$/, /^\/[a-zA-Z0-9/_.-]+$/] },
   chown:       { bin: 'chown',      argPatterns: ['-R', /^[a-zA-Z0-9_-]+:[a-zA-Z0-9_-]+$/, /^\/[a-zA-Z0-9/_.-]+$/] },

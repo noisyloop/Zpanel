@@ -5,6 +5,8 @@ const db    = require('../../db');
 
 const BACKUP_DIR  = process.env.BACKUP_DIR || '/var/backups/zpanel';
 const MAX_BACKUPS = parseInt(process.env.MAX_BACKUPS || '10', 10);
+const VHOST_ROOT  = process.env.VHOST_ROOT || '/var/www';
+const HOME_BASE   = process.env.HOME_BASE  || '/home/zpanel-users';
 
 // ── Path safety ───────────────────────────────────────────────────────────────
 
@@ -14,6 +16,54 @@ function safeBackupPath(filePath) {
     throw Object.assign(new Error('Backup path outside allowed directory'), { code: 'FORBIDDEN' });
   }
   return resolved;
+}
+
+// Safe SOURCE for a per-user backup. Allows:
+//  • the user's domain document roots (rows in `domains` joined by user_id)
+//  • the user's system home directory (system_users.home_dir, if provisioned)
+// Admins bypass with explicit allowlist of VHOST_ROOT and HOME_BASE.
+function safeSourceDir(userId, role, sourceDir) {
+  const resolved = path.resolve(sourceDir);
+
+  const allowed = new Set();
+  if (role === 'admin') {
+    allowed.add(VHOST_ROOT);
+    allowed.add(HOME_BASE);
+  }
+
+  // Per-user docroots
+  const docroots = db.prepare('SELECT doc_root FROM domains WHERE user_id = ?').all(userId);
+  for (const r of docroots) allowed.add(path.resolve(r.doc_root));
+
+  // Per-user home directory
+  const sysUser = db.prepare('SELECT home_dir FROM system_users WHERE user_id = ?').get(userId);
+  if (sysUser?.home_dir) allowed.add(path.resolve(sysUser.home_dir));
+
+  for (const root of allowed) {
+    if (resolved === root || resolved.startsWith(root + path.sep)) return resolved;
+  }
+
+  throw Object.assign(
+    new Error('Source directory is not within an allowed path for this user'),
+    { code: 'FORBIDDEN' },
+  );
+}
+
+// Safe RESTORE destination — same allowlist as the source.
+// This is the critical guard: without it, restore can extract a tarball
+// into /etc/cron.d, /root/.ssh, etc.
+function safeRestoreDir(userId, role, restoreDir) {
+  return safeSourceDir(userId, role, restoreDir);
+}
+
+// Verify that a database name belongs to the requesting user (admins bypass).
+function assertDatabaseOwnership(userId, role, dbName) {
+  if (role === 'admin') return true;
+  const owned = db.prepare('SELECT id FROM databases WHERE user_id = ? AND db_name = ?').get(userId, dbName);
+  if (!owned) {
+    throw Object.assign(new Error('Database not found'), { code: 'NOT_FOUND' });
+  }
+  return true;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -42,10 +92,12 @@ function enforceRetention(userId, type) {
 // ── File backup ───────────────────────────────────────────────────────────────
 // Creates a gzipped tar archive of `sourceDir` into BACKUP_DIR.
 
-async function backupFiles(userId, sourceDir, label, context = {}) {
+async function backupFiles(userId, role, sourceDir, label, context = {}) {
   ensureBackupDir();
 
-  const safe    = path.resolve(sourceDir);
+  // SECURITY: source must belong to this user (or admin) — prevents arbitrary
+  // file read of /etc/shadow, /root/.ssh, other tenants' data, etc.
+  const safe    = safeSourceDir(userId, role, sourceDir);
   const outFile = path.join(BACKUP_DIR, `files-${userId}-${timestamp()}.tar.gz`);
   const row     = db.prepare(
     "INSERT INTO backups (user_id, type, label, path, status) VALUES (?, 'files', ?, ?, 'pending')"
@@ -69,7 +121,7 @@ async function backupFiles(userId, sourceDir, label, context = {}) {
 // ── Database backup ───────────────────────────────────────────────────────────
 // Dumps a MySQL database using mysqldump.
 
-async function backupDatabase(userId, dbName, label, context = {}) {
+async function backupDatabase(userId, role, dbName, label, context = {}) {
   ensureBackupDir();
 
   const host    = process.env.MYSQL_HOST      || '127.0.0.1';
@@ -78,8 +130,12 @@ async function backupDatabase(userId, dbName, label, context = {}) {
   const pass    = process.env.MYSQL_ROOT_PASS || '';
   const outFile = path.join(BACKUP_DIR, `db-${userId}-${timestamp()}.sql.gz`);
 
-  // Validate dbName: must match the same rule as createDatabase
+  // Validate dbName format: must match the same rule as createDatabase
   if (!/^[a-zA-Z0-9_]{1,64}$/.test(dbName)) throw new Error('Invalid database name');
+
+  // SECURITY: verify the user owns this database before dumping with root creds.
+  // Without this check, any panel user could dump `mysql`, other tenants' DBs, etc.
+  assertDatabaseOwnership(userId, role, dbName);
 
   const row = db.prepare(
     "INSERT INTO backups (user_id, type, label, path, status) VALUES (?, 'database', ?, ?, 'pending')"
@@ -108,16 +164,28 @@ async function backupDatabase(userId, dbName, label, context = {}) {
 
 // ── Restore ───────────────────────────────────────────────────────────────────
 
-async function restoreFiles(backupId, restoreDir, context = {}) {
+async function restoreFiles(backupId, userId, role, restoreDir, context = {}) {
   const backup = db.prepare('SELECT * FROM backups WHERE id = ?').get(backupId);
   if (!backup || backup.type !== 'files') throw new Error('Backup not found');
-  if (backup.status !== 'ok') throw new Error('Backup is not usable');
+  if (backup.status !== 'ok')             throw new Error('Backup is not usable');
 
-  safeBackupPath(backup.path); // ensure it's within BACKUP_DIR
-  const safe = path.resolve(restoreDir);
+  // SECURITY: only the backup owner (or an admin) may restore.
+  if (backup.user_id !== userId && role !== 'admin') {
+    throw Object.assign(new Error('Forbidden'), { code: 'FORBIDDEN' });
+  }
+
+  safeBackupPath(backup.path);                                  // archive lives in BACKUP_DIR
+  const safe = safeRestoreDir(userId, role, restoreDir);        // destination is in user's tree
   fs.mkdirSync(safe, { recursive: true });
 
-  const result = await shell.run('tar', ['-xzf', backup.path, '-C', safe], context);
+  // Use safe extraction flags: don't honour stored owners, ACLs, or xattrs;
+  // refuse to follow symlinks pointing outside the destination.
+  const result = await shell.run('tar', [
+    '-xzf', backup.path,
+    '-C', safe,
+    '--no-same-owner',
+    '--no-overwrite-dir',
+  ], context);
   if (result.code !== 0) throw new Error(`Restore failed: ${result.stderr}`);
   return { ok: true, restored_to: safe };
 }

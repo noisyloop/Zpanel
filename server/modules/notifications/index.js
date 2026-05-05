@@ -66,11 +66,14 @@ function setPrefs(userId, { email, notify_ssl_expiry, notify_deploy_fail, notify
  * and the user has an email address in their prefs.
  */
 async function notify(userId, subject, body) {
-  // Audit log record
-  db.prepare(
+  // Audit log record — capture the inserted id so we can update *exactly* this
+  // row later. (SQLite doesn't support ORDER BY/LIMIT on UPDATE without a
+  // build-time flag that better-sqlite3 doesn't set, so we cannot rely on it.)
+  const insert = db.prepare(
     `INSERT INTO audit_log (user_id, action, target, args, result)
      VALUES (?, 'notification_sent', ?, ?, 'queued')`
   ).run(userId, subject, body?.slice(0, 200) ?? null);
+  const auditId = insert.lastInsertRowid;
 
   const prefs     = getPrefs(userId);
   const transport = getTransport();
@@ -83,13 +86,10 @@ async function notify(userId, subject, body) {
       subject: `[Zpanel] ${subject}`,
       text:    body,
     });
-    db.prepare(
-      "UPDATE audit_log SET result = 'sent' WHERE user_id = ? AND action = 'notification_sent' AND target = ? ORDER BY id DESC LIMIT 1"
-    ).run(userId, subject);
+    db.prepare("UPDATE audit_log SET result = 'sent' WHERE id = ?").run(auditId);
   } catch (err) {
-    db.prepare(
-      "UPDATE audit_log SET result = ? WHERE user_id = ? AND action = 'notification_sent' AND target = ? ORDER BY id DESC LIMIT 1"
-    ).run(`smtp_error: ${err.message}`, userId, subject);
+    db.prepare('UPDATE audit_log SET result = ? WHERE id = ?')
+      .run(`smtp_error: ${err.message}`, auditId);
   }
 }
 
