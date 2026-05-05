@@ -13,6 +13,8 @@ const loginLimiter = rateLimit({
   legacyHeaders: false,
 });
 
+const totp = require('./totp');
+
 // POST /api/auth/login
 router.post('/login', loginLimiter, (req, res) => {
   const { username, password } = req.body;
@@ -26,7 +28,14 @@ router.post('/login', loginLimiter, (req, res) => {
     return res.status(401).json({ error: 'Invalid credentials' });
   }
 
-  db.prepare('UPDATE users SET last_login = datetime(\'now\') WHERE id = ?').run(user.id);
+  db.prepare("UPDATE users SET last_login = datetime('now') WHERE id = ?").run(user.id);
+
+  // If TOTP is enabled, issue a short-lived MFA challenge token instead of a session
+  if (user.totp_enabled) {
+    const mfaToken = totp.issueMfaToken(user.id);
+    auth.audit(req, 'login_mfa_required', user.username, null, 'mfa_challenge');
+    return res.json({ mfa_required: true, mfa_token: mfaToken });
+  }
 
   const accessToken  = auth.issueAccessToken(user);
   const refreshToken = auth.issueRefreshToken(user.id);
@@ -41,6 +50,118 @@ router.post('/login', loginLimiter, (req, res) => {
       maxAge: 7 * 24 * 60 * 60 * 1000,
     })
     .json({ accessToken, user: { id: user.id, username: user.username, role: user.role } });
+});
+
+// POST /api/auth/totp/validate — step 2 of TOTP login
+// Accepts { mfa_token, code } or { mfa_token, backup_code }
+router.post('/totp/validate', loginLimiter, (req, res) => {
+  const { mfa_token, code, backup_code } = req.body;
+  if (!mfa_token) return res.status(400).json({ error: 'mfa_token required' });
+
+  const mfaRow = totp.consumeMfaToken(mfa_token);
+  if (!mfaRow)  return res.status(401).json({ error: 'MFA token invalid or expired' });
+
+  const user = db.prepare('SELECT * FROM users WHERE id = ?').get(mfaRow.user_id);
+  if (!user)    return res.status(401).json({ error: 'User not found' });
+
+  let valid = false;
+  if (backup_code) {
+    valid = totp.consumeBackupCode(user.id, backup_code);
+  } else if (code) {
+    valid = totp.verifyCode(user.totp_secret, String(code));
+  }
+
+  if (!valid) {
+    auth.audit(req, 'login_mfa_failed', user.username, null, 'invalid_code');
+    return res.status(401).json({ error: 'Invalid code' });
+  }
+
+  const accessToken  = auth.issueAccessToken(user);
+  const refreshToken = auth.issueRefreshToken(user.id);
+
+  auth.audit(req, 'login', user.username, null, 'ok_mfa');
+  res
+    .cookie('refresh_token', refreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'Strict',
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    })
+    .json({ accessToken, user: { id: user.id, username: user.username, role: user.role } });
+});
+
+// POST /api/auth/totp/setup — generate secret + QR, but don't enable yet
+router.post('/totp/setup', auth.requireAuth, async (req, res) => {
+  const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.sub);
+  if (user.totp_enabled) return res.status(400).json({ error: '2FA is already enabled' });
+
+  const secret  = totp.generateSecret();
+  const payload = await totp.buildSetupPayload('Zpanel', user.username, secret);
+
+  // Store secret temporarily (not enabled until confirmed)
+  db.prepare('UPDATE users SET totp_secret = ? WHERE id = ?').run(secret, user.id);
+  res.json(payload); // { secret, uri, qr (data-URL PNG) }
+});
+
+// POST /api/auth/totp/confirm — verify a code against the pending secret, then enable
+router.post('/totp/confirm', auth.requireAuth, (req, res) => {
+  const { code } = req.body;
+  if (!code) return res.status(400).json({ error: 'code required' });
+
+  const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.sub);
+  if (!user.totp_secret) return res.status(400).json({ error: 'Run /setup first' });
+  if (user.totp_enabled) return res.status(400).json({ error: '2FA already enabled' });
+
+  if (!totp.verifyCode(user.totp_secret, String(code))) {
+    return res.status(401).json({ error: 'Invalid code — check your authenticator app' });
+  }
+
+  db.prepare('UPDATE users SET totp_enabled = 1 WHERE id = ?').run(user.id);
+  const backupCodes = totp.generateBackupCodes(user.id);
+
+  auth.audit(req, 'totp_enabled', req.user.username, null, 'ok');
+  res.json({ ok: true, backup_codes: backupCodes }); // shown once
+});
+
+// DELETE /api/auth/totp — disable 2FA (requires current TOTP code or backup)
+router.delete('/totp', auth.requireAuth, (req, res) => {
+  const { code, backup_code } = req.body;
+  const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.sub);
+  if (!user.totp_enabled) return res.status(400).json({ error: '2FA is not enabled' });
+
+  let valid = false;
+  if (backup_code) valid = totp.consumeBackupCode(user.id, backup_code);
+  else if (code)   valid = totp.verifyCode(user.totp_secret, String(code));
+
+  if (!valid) return res.status(401).json({ error: 'Invalid code' });
+
+  db.prepare('UPDATE users SET totp_enabled = 0, totp_secret = NULL WHERE id = ?').run(user.id);
+  db.prepare('DELETE FROM totp_backup_codes WHERE user_id = ?').run(user.id);
+
+  auth.audit(req, 'totp_disabled', req.user.username, null, 'ok');
+  res.json({ ok: true });
+});
+
+// POST /api/auth/totp/backup — regenerate backup codes (requires TOTP code)
+router.post('/totp/backup', auth.requireAuth, (req, res) => {
+  const { code } = req.body;
+  const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.sub);
+  if (!user.totp_enabled) return res.status(400).json({ error: '2FA not enabled' });
+  if (!totp.verifyCode(user.totp_secret, String(code))) {
+    return res.status(401).json({ error: 'Invalid code' });
+  }
+  const backupCodes = totp.generateBackupCodes(user.id);
+  auth.audit(req, 'totp_backup_regen', req.user.username, null, 'ok');
+  res.json({ backup_codes: backupCodes });
+});
+
+// GET /api/auth/totp/status — current 2FA state for the authenticated user
+router.get('/totp/status', auth.requireAuth, (req, res) => {
+  const user = db.prepare('SELECT totp_enabled FROM users WHERE id = ?').get(req.user.sub);
+  const remaining = user?.totp_enabled
+    ? db.prepare('SELECT COUNT(*) AS n FROM totp_backup_codes WHERE user_id = ? AND used_at IS NULL').get(req.user.sub).n
+    : 0;
+  res.json({ enabled: !!user?.totp_enabled, backup_codes_remaining: remaining });
 });
 
 // POST /api/auth/refresh

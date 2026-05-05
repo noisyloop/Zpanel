@@ -10,7 +10,8 @@
   <div id="app">
     <!-- Login screen -->
     <div id="login-screen" class="screen">
-      <div class="login-box">
+      <!-- Step 1: username + password -->
+      <div id="login-step1" class="login-box">
         <h1>Zpanel</h1>
         <form id="login-form">
           <input id="login-username" type="text" placeholder="Username" autocomplete="username" required />
@@ -18,6 +19,18 @@
           <button type="submit">Sign In</button>
           <p id="login-error" class="error"></p>
         </form>
+      </div>
+
+      <!-- Step 2: TOTP challenge (shown when mfa_required) -->
+      <div id="login-step2" class="login-box hidden">
+        <h1>Zpanel</h1>
+        <p style="color:var(--muted);font-size:13px;margin-bottom:16px;text-align:center">Enter the 6-digit code from your authenticator app.</p>
+        <input id="mfa-code-input" type="text" inputmode="numeric" maxlength="6" placeholder="000000" style="letter-spacing:6px;font-size:22px;text-align:center" autocomplete="one-time-code" />
+        <p style="color:var(--muted);font-size:12px;margin:8px 0">Or enter a backup code:</p>
+        <input id="mfa-backup-input" type="text" placeholder="XXXXXXXX" style="font-family:monospace;text-align:center" />
+        <button id="mfa-submit-btn" style="width:100%;background:var(--accent);color:#fff;border:none;border-radius:var(--radius);padding:11px;font-size:14px;font-weight:600;cursor:pointer;margin-top:8px">Verify</button>
+        <p id="mfa-error" class="error"></p>
+        <button id="mfa-back-btn" style="background:none;border:none;color:var(--muted);font-size:12px;cursor:pointer;margin-top:8px;width:100%">← Back to login</button>
       </div>
     </div>
 
@@ -41,6 +54,8 @@
           <li><button class="nav-btn" data-panel="apps">App Installer</button></li>
           <li><button class="nav-btn" data-panel="processes">Processes</button></li>
           <li><button class="nav-btn" data-panel="deploy">Git Deploy</button></li>
+          <li><button class="nav-btn" data-panel="backups">Backups</button></li>
+          <li><button class="nav-btn" data-panel="notifications">Notifications</button></li>
           <li class="nav-separator admin-only hidden"></li>
           <li class="admin-only hidden"><button class="nav-btn" data-panel="users">Users</button></li>
           <li class="admin-only hidden"><button class="nav-btn" data-panel="audit">Audit Log</button></li>
@@ -484,6 +499,74 @@
           <p id="deploy-error" class="error"></p>
         </section>
 
+        <!-- Backups panel -->
+        <section id="panel-backups" class="panel hidden">
+          <h2>Backups</h2>
+          <div class="panel-tabs">
+            <button class="tab-btn active" data-backup-tab="list">My Backups</button>
+            <button class="tab-btn" data-backup-tab="files">Backup Files</button>
+            <button class="tab-btn" data-backup-tab="database">Backup Database</button>
+          </div>
+
+          <div id="backup-tab-list">
+            <div class="panel-toolbar">
+              <button id="backup-refresh-btn" class="btn-ghost">Refresh</button>
+            </div>
+            <table class="data-table">
+              <thead><tr><th>Type</th><th>Label</th><th>Size</th><th>Status</th><th>Created</th><th></th></tr></thead>
+              <tbody id="backups-tbody"></tbody>
+            </table>
+          </div>
+
+          <div id="backup-tab-files" class="hidden">
+            <div class="inline-form" style="margin-top:0;max-width:500px">
+              <h3>Backup a Directory</h3>
+              <input id="backup-source-dir" type="text" placeholder="Source path (e.g. /var/www/mysite)" />
+              <input id="backup-files-label" type="text" placeholder="Label (optional)" />
+              <button id="backup-files-btn" class="btn-primary">Create Backup</button>
+              <p id="backup-files-msg" class="info-msg"></p>
+              <p id="backup-files-error" class="error"></p>
+            </div>
+          </div>
+
+          <div id="backup-tab-database" class="hidden">
+            <div class="inline-form" style="margin-top:0;max-width:500px">
+              <h3>Dump a MySQL Database</h3>
+              <input id="backup-db-name" type="text" placeholder="Database name" />
+              <input id="backup-db-label" type="text" placeholder="Label (optional)" />
+              <button id="backup-db-btn" class="btn-primary">Create Dump</button>
+              <p id="backup-db-msg" class="info-msg"></p>
+              <p id="backup-db-error" class="error"></p>
+            </div>
+          </div>
+
+          <p id="backups-error" class="error"></p>
+        </section>
+
+        <!-- Notifications panel -->
+        <section id="panel-notifications" class="panel hidden">
+          <h2>Notifications</h2>
+          <div class="inline-form" style="margin-top:0;max-width:480px">
+            <h3>Email Preferences</h3>
+            <input id="notif-email" type="email" placeholder="Email address for alerts" />
+            <label class="checkbox-label">
+              <input id="notif-ssl" type="checkbox" checked /> SSL expiry warnings (30 days before)
+            </label>
+            <label class="checkbox-label">
+              <input id="notif-deploy" type="checkbox" checked /> Deploy failure alerts
+            </label>
+            <label class="checkbox-label">
+              <input id="notif-quota" type="checkbox" checked /> Disk quota warnings (&gt;90%)
+            </label>
+            <div class="form-row">
+              <button id="notif-save-btn" class="btn-primary">Save Preferences</button>
+              <button id="notif-test-btn" class="btn-ghost">Send Test Email</button>
+            </div>
+            <p id="notif-msg"   class="info-msg"></p>
+            <p id="notif-error" class="error"></p>
+          </div>
+        </section>
+
         <!-- Profile panel -->
         <section id="panel-profile" class="panel hidden">
           <h2>Profile</h2>
@@ -527,7 +610,63 @@
                 </div>
               </div>
             </div>
+
+            <!-- Two-factor authentication -->
+            <div class="inline-form" style="margin-top:0">
+              <h3>Two-Factor Authentication (TOTP)</h3>
+              <div id="totp-disabled-view">
+                <p style="color:var(--muted);font-size:12px;margin-bottom:14px">
+                  Add a second factor using any TOTP app (Google Authenticator, Authy, 1Password, etc.)
+                </p>
+                <button id="totp-setup-btn" class="btn-primary">Enable 2FA</button>
+              </div>
+
+              <!-- Step 1: scan QR -->
+              <div id="totp-setup-view" class="hidden">
+                <p style="font-size:12px;color:var(--muted);margin-bottom:10px">
+                  Scan this QR code with your authenticator app, then enter the 6-digit code below.
+                </p>
+                <img id="totp-qr-img" src="" alt="QR code" style="width:180px;height:180px;border-radius:var(--radius);display:block;margin-bottom:10px" />
+                <code id="totp-secret-text" style="font-size:11px;word-break:break-all;color:var(--muted);display:block;margin-bottom:10px"></code>
+                <input id="totp-confirm-code" type="text" inputmode="numeric" maxlength="6" placeholder="6-digit code" style="letter-spacing:4px;font-size:18px;text-align:center" />
+                <div class="form-row">
+                  <button id="totp-confirm-btn" class="btn-primary">Verify & Enable</button>
+                  <button id="totp-setup-cancel-btn" class="btn-ghost">Cancel</button>
+                </div>
+                <p id="totp-setup-error" class="error"></p>
+              </div>
+
+              <!-- Step 2: backup codes shown once -->
+              <div id="totp-backup-view" class="hidden">
+                <p style="color:#4caf82;font-size:12px;margin-bottom:8px">
+                  2FA enabled! Save these backup codes — each can be used once if you lose your device.
+                </p>
+                <div id="totp-backup-codes" style="font-family:monospace;font-size:13px;line-height:2;background:var(--surface2);padding:12px;border-radius:var(--radius);margin-bottom:10px"></div>
+                <button id="totp-backup-done-btn" class="btn-primary">Done</button>
+              </div>
+
+              <!-- Enabled state -->
+              <div id="totp-enabled-view" class="hidden">
+                <p style="color:#4caf82;font-size:13px;margin-bottom:10px">✓ Two-factor authentication is active.</p>
+                <p id="totp-backup-remaining" style="color:var(--muted);font-size:12px;margin-bottom:14px"></p>
+                <div class="form-row">
+                  <button id="totp-disable-btn" class="btn-ghost" style="border-color:var(--danger);color:var(--danger)">Disable 2FA</button>
+                  <button id="totp-regen-btn"   class="btn-ghost">Regenerate Backup Codes</button>
+                </div>
+                <!-- Confirm current code before disabling/regenerating -->
+                <div id="totp-action-confirm" class="hidden" style="margin-top:12px">
+                  <input id="totp-action-code" type="text" inputmode="numeric" maxlength="6" placeholder="Current 6-digit code" style="letter-spacing:4px;text-align:center" />
+                  <div class="form-row" style="margin-top:8px">
+                    <button id="totp-action-submit-btn" class="btn-primary">Confirm</button>
+                    <button id="totp-action-cancel-btn" class="btn-ghost">Cancel</button>
+                  </div>
+                </div>
+                <p id="totp-enabled-error" class="error"></p>
+              </div>
+            </div>
           </div>
+
+          <!-- Login 2FA modal (shown over login screen when mfa_required) -->
         </section>
 
         <!-- Users panel (admin only) -->

@@ -34,8 +34,10 @@ app.use('/api/apps',      require('./modules/apps/routes'));
 app.use('/api/processes', require('./modules/processes/routes'));
 app.use('/api/isolation', require('./modules/isolation/routes'));
 app.use('/api/deploy',    require('./modules/deploy/routes'));
-app.use('/api/users',     require('./modules/users/routes'));
-app.use('/api/audit',     require('./modules/audit/routes'));
+app.use('/api/users',         require('./modules/users/routes'));
+app.use('/api/audit',         require('./modules/audit/routes'));
+app.use('/api/backups',       require('./modules/backups/routes'));
+app.use('/api/notifications', require('./modules/notifications/routes'));
 
 // SPA fallback — serve index.html for all non-API routes
 app.get('*', (req, res) => {
