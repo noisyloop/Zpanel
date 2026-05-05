@@ -23,11 +23,15 @@ router.post('/files', requireAuth, async (req, res) => {
   const { sourceDir, label } = req.body;
   if (!sourceDir) return res.status(400).json({ error: 'sourceDir required' });
   try {
-    const backup = await backups.backupFiles(req.user.sub, sourceDir, label || sourceDir, { user: req.user.username, ip: req.ip });
+    const backup = await backups.backupFiles(
+      req.user.sub, req.user.role, sourceDir, label || sourceDir,
+      { user: req.user.username, ip: req.ip },
+    );
     audit(req, 'backup_files', sourceDir, null, 'ok');
     res.status(201).json(backup);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    const status = err.code === 'FORBIDDEN' ? 403 : 500;
+    res.status(status).json({ error: err.message });
   }
 });
 
@@ -36,11 +40,15 @@ router.post('/database', requireAuth, async (req, res) => {
   const { dbName, label } = req.body;
   if (!dbName) return res.status(400).json({ error: 'dbName required' });
   try {
-    const backup = await backups.backupDatabase(req.user.sub, dbName, label || dbName, { user: req.user.username, ip: req.ip });
+    const backup = await backups.backupDatabase(
+      req.user.sub, req.user.role, dbName, label || dbName,
+      { user: req.user.username, ip: req.ip },
+    );
     audit(req, 'backup_database', dbName, null, 'ok');
     res.status(201).json(backup);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    const status = err.code === 'NOT_FOUND' ? 404 : 500;
+    res.status(status).json({ error: err.message });
   }
 });
 
@@ -49,11 +57,15 @@ router.post('/:id/restore', requireAuth, async (req, res) => {
   const { restoreDir } = req.body;
   if (!restoreDir) return res.status(400).json({ error: 'restoreDir required' });
   try {
-    const result = await backups.restoreFiles(parseInt(req.params.id, 10), restoreDir, { user: req.user.username, ip: req.ip });
+    const result = await backups.restoreFiles(
+      parseInt(req.params.id, 10), req.user.sub, req.user.role, restoreDir,
+      { user: req.user.username, ip: req.ip },
+    );
     audit(req, 'backup_restore', req.params.id, { restoreDir }, 'ok');
     res.json(result);
   } catch (err) {
-    const status = err.message === 'Backup not found' ? 404 : 500;
+    const status = err.code === 'FORBIDDEN'   ? 403
+                 : err.message === 'Backup not found' ? 404 : 500;
     res.status(status).json({ error: err.message });
   }
 });

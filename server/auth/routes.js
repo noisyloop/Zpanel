@@ -24,7 +24,11 @@ router.post('/login', loginLimiter, (req, res) => {
 
   const user = auth.findUser(username);
   if (!user || !auth.verifyPassword(password, user.password)) {
-    auth.audit(req, 'login_failed', username, null, 'invalid_credentials');
+    // Cap and sanitise the attempted-username we record. Defence-in-depth
+    // against stored-XSS payloads being planted via failed-login attempts
+    // before being rendered in the admin Audit Log panel.
+    const safeAttempt = String(username).slice(0, 64).replace(/[^a-zA-Z0-9._@+-]/g, '?');
+    auth.audit(req, 'login_failed', safeAttempt, null, 'invalid_credentials');
     return res.status(401).json({ error: 'Invalid credentials' });
   }
 

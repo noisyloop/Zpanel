@@ -14,6 +14,16 @@ function qs(sel, root = document) { return root.querySelector(sel); }
 function show(el)  { el.classList.remove('hidden'); }
 function hide(el)  { el.classList.add('hidden'); }
 
+// HTML-escape a string for safe injection into innerHTML templates. Any value
+// that originated from the server (user input, audit fields, DB rows, etc.)
+// MUST go through esc() before being interpolated into a template literal.
+function esc(s) {
+  if (s === null || s === undefined) return '';
+  return String(s).replace(/[&<>"']/g, c => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  }[c]));
+}
+
 async function api(method, path, body, isFormData = false) {
   const opts = {
     method,
@@ -1509,19 +1519,20 @@ async function loadUsersPanel() {
   const tbody = qs('#users-tbody');
   tbody.innerHTML = '';
   data.forEach(u => {
-    const isSelf = u.id === currentUser?.id;
+    const isSelf  = u.id === currentUser?.id;
+    const safeUsername = esc(u.username);
     const tr = document.createElement('tr');
     tr.innerHTML = `
-      <td>${u.username}${isSelf ? ' <span style="color:var(--muted);font-size:11px">(you)</span>' : ''}</td>
-      <td><span class="badge ${u.role === 'admin' ? 'badge-active' : 'badge-pending'}">${u.role}</span></td>
-      <td>${u.domains}</td>
-      <td>${u.databases}</td>
-      <td>${u.mailboxes}</td>
-      <td>${u.created_at?.slice(0, 10) || '—'}</td>
-      <td>${u.last_login?.slice(0, 16) || 'Never'}</td>
+      <td>${safeUsername}${isSelf ? ' <span style="color:var(--muted);font-size:11px">(you)</span>' : ''}</td>
+      <td><span class="badge ${u.role === 'admin' ? 'badge-active' : 'badge-pending'}">${esc(u.role)}</span></td>
+      <td>${u.domains|0}</td>
+      <td>${u.databases|0}</td>
+      <td>${u.mailboxes|0}</td>
+      <td>${esc(u.created_at?.slice(0, 10)) || '—'}</td>
+      <td>${esc(u.last_login?.slice(0, 16)) || 'Never'}</td>
       <td>
-        <button class="action-btn" onclick="openUserReset(${u.id},'${u.username}')">Reset PW</button>
-        ${!isSelf ? `<button class="action-btn danger" onclick="deleteUser(${u.id})">Delete</button>` : ''}
+        <button class="action-btn" onclick="openUserReset(${u.id|0}, this.dataset.name)" data-name="${safeUsername}">Reset PW</button>
+        ${!isSelf ? `<button class="action-btn danger" onclick="deleteUser(${u.id|0})">Delete</button>` : ''}
       </td>`;
     tbody.appendChild(tr);
   });
@@ -1600,7 +1611,7 @@ async function loadAuditPanel() {
     actions.forEach(a => {
       const opt = document.createElement('option');
       opt.value = a;
-      opt.textContent = a;
+      opt.textContent = a; // textContent is safe — never parses HTML
       sel.appendChild(opt);
     });
   }
@@ -1628,13 +1639,15 @@ async function fetchAuditPage() {
   } else {
     data.rows.forEach(r => {
       const tr = document.createElement('tr');
+      // SECURITY: every field below is server-supplied and may include
+      // attacker-planted bytes (e.g. via login_failed audit). Escape all of them.
       tr.innerHTML = `
-        <td style="white-space:nowrap">${r.ts?.slice(0, 16) || '—'}</td>
-        <td>${r.username || '—'}</td>
-        <td><code style="font-size:11px">${r.action}</code></td>
-        <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.target || ''}">${r.target || '—'}</td>
-        <td style="font-family:monospace;font-size:11px">${r.ip || '—'}</td>
-        <td>${r.result || '—'}</td>`;
+        <td style="white-space:nowrap">${esc(r.ts?.slice(0, 16)) || '—'}</td>
+        <td>${esc(r.username) || '—'}</td>
+        <td><code style="font-size:11px">${esc(r.action)}</code></td>
+        <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(r.target)}">${esc(r.target) || '—'}</td>
+        <td style="font-family:monospace;font-size:11px">${esc(r.ip) || '—'}</td>
+        <td>${esc(r.result) || '—'}</td>`;
       tbody.appendChild(tr);
     });
   }
@@ -1799,19 +1812,20 @@ async function fetchBackupList() {
     return;
   }
   data.forEach(b => {
-    const sizeMb = b.size_bytes ? (b.size_bytes / 1024 / 1024).toFixed(1) + ' MB' : '—';
+    const sizeMb      = b.size_bytes ? (b.size_bytes / 1024 / 1024).toFixed(1) + ' MB' : '—';
     const statusClass = b.status === 'ok' ? 'badge-active' : b.status === 'failed' ? 'badge-failed' : 'badge-pending';
+    const id          = b.id | 0;
     const tr = document.createElement('tr');
     tr.innerHTML = `
-      <td><span class="badge ${b.type === 'files' ? 'badge-pending' : 'badge-active'}">${b.type}</span></td>
-      <td>${b.label}</td>
+      <td><span class="badge ${b.type === 'files' ? 'badge-pending' : 'badge-active'}">${esc(b.type)}</span></td>
+      <td>${esc(b.label)}</td>
       <td>${sizeMb}</td>
-      <td><span class="badge ${statusClass}">${b.status}</span></td>
-      <td>${b.created_at?.slice(0, 16) || '—'}</td>
+      <td><span class="badge ${statusClass}">${esc(b.status)}</span></td>
+      <td>${esc(b.created_at?.slice(0, 16)) || '—'}</td>
       <td>
-        ${b.status === 'ok' ? `<a class="action-btn" href="/api/backups/${b.id}/download" target="_blank">Download</a>` : ''}
-        ${b.status === 'ok' && b.type === 'files' ? `<button class="action-btn" onclick="restoreBackup(${b.id})">Restore</button>` : ''}
-        <button class="action-btn danger" onclick="deleteBackup(${b.id})">Delete</button>
+        ${b.status === 'ok' ? `<a class="action-btn" href="/api/backups/${id}/download" target="_blank">Download</a>` : ''}
+        ${b.status === 'ok' && b.type === 'files' ? `<button class="action-btn" onclick="restoreBackup(${id})">Restore</button>` : ''}
+        <button class="action-btn danger" onclick="deleteBackup(${id})">Delete</button>
       </td>`;
     tbody.appendChild(tr);
   });
